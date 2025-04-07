@@ -89,19 +89,19 @@ class Memory:
     def _process_node_info(self, cur):
         if self.format == "xml":
             content = """
-    <任务 id={}>
-    <依赖任务>
+    <task id={}>
+    <dependencies>
     {}
-    </依赖任务>
-    <任务目标>
+    </dependencies>
+    <goal>
     {}
-    </任务目标>
-    <任务结果>
+    </goal>
+    <result>
     {}
-    </任务结果>
-    </任务>
-    """.format(cur.nid, 
-            ",".join(str(par.nid) for par in cur.parent_nodes) if len(cur.parent_nodes) > 0 else "无", 
+    </result>
+    </task>
+    """.format(cur.nid,
+            ",".join(str(par.nid) for par in cur.parent_nodes) if len(cur.parent_nodes) > 0 else "none",
             cur.info["goal"], cur.info["final_result"]["result"]).strip()
         elif self.format == "nl":
             content = "{}. {}: \n{}\n".format(cur.nid, cur.info["goal"], cur.info["final_result"]["result"])
