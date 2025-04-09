@@ -28,12 +28,16 @@ func NewService(ctx context.Context, store Store, eventBus *events.EventBus, log
 		serviceName: "state-service",
 	}
 
+	return service, nil
+}
+
+func (s *Service) Start(ctx context.Context) error {
 	// Subscribe to relevant events
-	if err := service.subscribeToEvents(ctx); err != nil {
-		return nil, errors.Wrap(err, "failed to subscribe to events")
+	if err := s.subscribeToEvents(ctx); err != nil {
+		return errors.Wrap(err, "failed to subscribe to events")
 	}
 
-	return service, nil
+	return nil
 }
 
 // subscribeToEvents sets up subscriptions for the events the service needs to handle

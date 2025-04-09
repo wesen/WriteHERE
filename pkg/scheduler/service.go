@@ -4,9 +4,9 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/ThreeDotsLabs/watermill/message"
-	"github.com/go-go-golems/writehere-go/pkg/events"
-	"github.com/go-go-golems/writehere-go/pkg/state"
+	"writehere-go/pkg/events"
+	"writehere-go/pkg/state"
+
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 )
@@ -14,14 +14,14 @@ import (
 // Service is responsible for listening to TaskReady events and assigning them
 // to appropriate worker types by publishing TaskAssigned events.
 type Service struct {
-	eventBus events.EventBus
+	eventBus *events.EventBus
 	store    state.Store
 	// workerTypeMapping maps state.TaskType to the string identifier of the worker type
 	workerTypeMapping map[state.TaskType]string
 }
 
 // NewService creates a new Scheduler Service.
-func NewService(bus events.EventBus, store state.Store) *Service {
+func NewService(bus *events.EventBus, store state.Store) *Service {
 	// Define the mapping from task types to worker type strings
 	// This should likely be configurable later
 	mapping := map[state.TaskType]string{
@@ -45,62 +45,37 @@ func NewService(bus events.EventBus, store state.Store) *Service {
 func (s *Service) Start(ctx context.Context) error {
 	log.Info().Msg("Starting Scheduler Service")
 
-	// Subscribe to TaskReady events
-	messages, err := s.eventBus.Subscribe(ctx, events.TaskTopic)
+	// Subscribe specifically to TaskReady events
+	err := s.eventBus.Subscribe(ctx, events.TaskTopic, events.TaskReady, s.handleTaskReady)
 	if err != nil {
-		return errors.Wrap(err, "failed to subscribe to task topic")
+		return errors.Wrap(err, "failed to subscribe to task topic for TaskReady events")
 	}
 
-	go s.processMessages(ctx, messages)
+	log.Info().Msg("Scheduler Service started and subscribed to TaskReady events")
 
-	log.Info().Msg("Scheduler Service started and subscribed to events")
+	// Keep the service running until context is cancelled
+	<-ctx.Done()
+	log.Info().Msg("Scheduler Service shutting down")
 	return nil
-}
-
-func (s *Service) processMessages(ctx context.Context, messages <-chan *message.Message) {
-	for msg := range messages {
-		select {
-		case <-ctx.Done():
-			log.Info().Msg("Scheduler context cancelled, stopping message processing")
-			return
-		default:
-			evt, err := events.EventFromMessage(msg)
-			if err != nil {
-				log.Error().Err(err).Str("message_uuid", msg.UUID).Msg("Failed to unmarshal event from message")
-				msg.Nack() // Indicate processing failure
-				continue
-			}
-
-			// Only handle TaskReady events
-			if evt.EventType != events.TaskReady {
-				msg.Ack()
-				continue
-			}
-
-			err = s.handleTaskReady(ctx, evt)
-			if err != nil {
-				log.Error().Err(err).Str("event_id", evt.EventID).Str("task_id", "unknown").Msg("Failed to handle TaskReady event")
-				// Decide on Nack vs Ack based on error type (e.g., Nack for transient errors)
-				msg.Nack()
-			} else {
-				msg.Ack()
-			}
-		}
-	}
-	log.Info().Msg("Scheduler message processing loop finished")
 }
 
 // handleTaskReady processes a TaskReady event.
 func (s *Service) handleTaskReady(ctx context.Context, event events.Event) error {
 	log.Debug().Str("event_id", event.EventID).Msg("Handling TaskReady event")
 
+	// Payload extraction needs refinement as EventFromMessage doesn't decode nested payload
 	var payload events.TaskReadyPayload
 	payloadBytes, err := json.Marshal(event.Payload)
 	if err != nil {
-		return errors.Wrap(err, "failed to marshal TaskReady payload for decoding")
+		return errors.Wrap(err, "failed to marshal TaskReady payload map for decoding")
 	}
 	if err := json.Unmarshal(payloadBytes, &payload); err != nil {
-		return errors.Wrap(err, "failed to unmarshal TaskReady payload")
+		// Attempt decoding if Payload is already the correct struct type (e.g., from direct call)
+		if p, ok := event.Payload.(events.TaskReadyPayload); ok {
+			payload = p
+		} else {
+			return errors.Wrap(err, "failed to unmarshal TaskReady payload")
+		}
 	}
 
 	log.Info().Str("task_id", payload.TaskID).Msg("Processing TaskReady event")

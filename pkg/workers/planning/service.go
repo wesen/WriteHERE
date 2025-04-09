@@ -4,9 +4,9 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/ThreeDotsLabs/watermill/message"
-	"github.com/go-go-golems/writehere-go/pkg/events"
-	"github.com/go-go-golems/writehere-go/pkg/state"
+	"writehere-go/pkg/events"
+	"writehere-go/pkg/state"
+
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 )
@@ -15,13 +15,13 @@ const WorkerType = "planning-worker"
 
 // Service implements a worker that handles planning tasks.
 type Service struct {
-	eventBus events.EventBus
+	eventBus *events.EventBus
 	store    state.Store
 	// Add any planning-specific dependencies here, like LLM clients
 }
 
 // NewService creates a new Planning Worker Service.
-func NewService(bus events.EventBus, store state.Store) *Service {
+func NewService(bus *events.EventBus, store state.Store) *Service {
 	return &Service{
 		eventBus: bus,
 		store:    store,
@@ -32,59 +32,35 @@ func NewService(bus events.EventBus, store state.Store) *Service {
 func (s *Service) Start(ctx context.Context) error {
 	log.Info().Str("worker_type", WorkerType).Msg("Starting Planning Worker Service")
 
-	// Subscribe to TaskAssigned events
-	messages, err := s.eventBus.Subscribe(ctx, events.TaskTopic) // Subscribing to the general task topic
+	// Subscribe specifically to TaskAssigned events
+	err := s.eventBus.Subscribe(ctx, events.TaskTopic, events.TaskAssigned, s.handleTaskAssigned)
 	if err != nil {
-		return errors.Wrap(err, "failed to subscribe to task topic")
+		return errors.Wrap(err, "failed to subscribe to task topic for TaskAssigned events")
 	}
 
-	go s.processMessages(ctx, messages)
+	log.Info().Str("worker_type", WorkerType).Msg("Planning Worker Service started and subscribed to TaskAssigned events")
 
-	log.Info().Str("worker_type", WorkerType).Msg("Planning Worker Service started and subscribed to events")
+	// Keep the service running until context is cancelled
+	<-ctx.Done()
+	log.Info().Str("worker_type", WorkerType).Msg("Planning Worker Service shutting down")
 	return nil
-}
-
-func (s *Service) processMessages(ctx context.Context, messages <-chan *message.Message) {
-	for msg := range messages {
-		select {
-		case <-ctx.Done():
-			log.Info().Str("worker_type", WorkerType).Msg("Context cancelled, stopping message processing")
-			return
-		default:
-			evt, err := events.EventFromMessage(msg)
-			if err != nil {
-				log.Error().Err(err).Str("message_uuid", msg.UUID).Msg("Failed to unmarshal event from message")
-				msg.Nack()
-				continue
-			}
-
-			// Only handle TaskAssigned events
-			if evt.EventType != events.TaskAssigned {
-				msg.Ack()
-				continue
-			}
-
-			err = s.handleTaskAssigned(ctx, evt)
-			if err != nil {
-				log.Error().Err(err).Str("event_id", evt.EventID).Msg("Failed to handle TaskAssigned event")
-				msg.Nack() // Nack on error to allow for retries
-			} else {
-				msg.Ack()
-			}
-		}
-	}
-	log.Info().Str("worker_type", WorkerType).Msg("Planning Worker message processing loop finished")
 }
 
 // handleTaskAssigned processes a TaskAssigned event.
 func (s *Service) handleTaskAssigned(ctx context.Context, event events.Event) error {
 	var assignedPayload events.TaskAssignedPayload
+	// Payload extraction needs refinement
 	payloadBytes, err := json.Marshal(event.Payload)
 	if err != nil {
-		return errors.Wrap(err, "failed to marshal TaskAssigned payload for decoding")
+		return errors.Wrap(err, "failed to marshal TaskAssigned payload map for decoding")
 	}
 	if err := json.Unmarshal(payloadBytes, &assignedPayload); err != nil {
-		return errors.Wrap(err, "failed to unmarshal TaskAssigned payload")
+		// Attempt decoding if Payload is already the correct struct type
+		if p, ok := event.Payload.(events.TaskAssignedPayload); ok {
+			assignedPayload = p
+		} else {
+			return errors.Wrap(err, "failed to unmarshal TaskAssigned payload")
+		}
 	}
 
 	// Filter: Check if this task is for this worker type

@@ -32,6 +32,7 @@ const (
 	TaskTypePlanning    TaskType = "PLANNING"
 	TaskTypeReflection  TaskType = "REFLECTION"
 	TaskTypeAggregation TaskType = "AGGREGATION"
+	TaskTypeExecution   TaskType = "EXECUTION"
 )
 
 // Task represents a unit of work in the system

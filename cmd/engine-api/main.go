@@ -11,7 +11,10 @@ import (
 	"time"
 
 	"writehere-go/pkg/events"
+	"writehere-go/pkg/scheduler"
 	"writehere-go/pkg/state"
+	"writehere-go/pkg/workers/execution"
+	"writehere-go/pkg/workers/planning"
 
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
@@ -82,6 +85,13 @@ func run(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return errors.Wrap(err, "failed to create state service")
 	}
+
+	// Initialize the Scheduler Service
+	schedulerService := scheduler.NewService(eventBus, store)
+
+	// Initialize Worker Services
+	planningWorker := planning.NewService(eventBus, store)
+	executionWorker := execution.NewService(eventBus, store)
 
 	// Create HTTP server
 	router := http.NewServeMux()
@@ -174,9 +184,29 @@ func run(cmd *cobra.Command, args []string) error {
 	}
 
 	// Use errgroup to manage goroutines
-	g, ctx := errgroup.WithContext(ctx)
+	g, gCtx := errgroup.WithContext(ctx)
 
-	// Start the server
+	// Start the State Service
+	g.Go(func() error {
+		return stateService.Start(gCtx)
+	})
+
+	// Start the Scheduler Service
+	g.Go(func() error {
+		return schedulerService.Start(gCtx)
+	})
+
+	// Start the Planning Worker Service
+	g.Go(func() error {
+		return planningWorker.Start(gCtx)
+	})
+
+	// Start the Execution Worker Service
+	g.Go(func() error {
+		return executionWorker.Start(gCtx)
+	})
+
+	// Start the HTTP server
 	g.Go(func() error {
 		log.Info().Int("port", port).Msg("Starting API server")
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
@@ -185,22 +215,26 @@ func run(cmd *cobra.Command, args []string) error {
 		return nil
 	})
 
-	// Handle shutdown
+	// Handle server shutdown
 	g.Go(func() error {
-		<-ctx.Done()
+		<-gCtx.Done()
 		log.Info().Msg("Shutting down server")
 
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer shutdownCancel()
 
 		return server.Shutdown(shutdownCtx)
 	})
 
 	// Wait for all goroutines to complete
 	if err := g.Wait(); err != nil {
-		return errors.Wrap(err, "server error")
+		if !errors.Is(err, context.Canceled) {
+			log.Error().Err(err).Msg("Error during service execution or shutdown")
+			return errors.Wrap(err, "service error")
+		}
+		log.Info().Msg("Services shut down due to context cancellation")
 	}
 
-	log.Info().Msg("Server shut down gracefully")
+	log.Info().Msg("Application shut down gracefully")
 	return nil
 }
