@@ -1,0 +1,345 @@
+package state
+
+import (
+	"context"
+	"fmt"
+
+	"writehere-go/pkg/events"
+
+	"github.com/pkg/errors"
+	"github.com/rs/zerolog"
+	"golang.org/x/sync/errgroup"
+)
+
+// Service manages the state of tasks and handles events
+type Service struct {
+	store       Store
+	eventBus    *events.EventBus
+	logger      zerolog.Logger
+	serviceName string
+}
+
+// NewService creates a new state service
+func NewService(ctx context.Context, store Store, eventBus *events.EventBus, logger zerolog.Logger) (*Service, error) {
+	service := &Service{
+		store:       store,
+		eventBus:    eventBus,
+		logger:      logger,
+		serviceName: "state-service",
+	}
+
+	// Subscribe to relevant events
+	if err := service.subscribeToEvents(ctx); err != nil {
+		return nil, errors.Wrap(err, "failed to subscribe to events")
+	}
+
+	return service, nil
+}
+
+// subscribeToEvents sets up subscriptions for the events the service needs to handle
+func (s *Service) subscribeToEvents(ctx context.Context) error {
+	// Create an error group for concurrent subscriptions
+	g, ctx := errgroup.WithContext(ctx)
+
+	// Handle TaskSubmitted events
+	g.Go(func() error {
+		return s.eventBus.Subscribe(ctx, events.TaskTopic, events.TaskSubmitted, s.handleTaskSubmitted)
+	})
+
+	// Handle TaskCompleted events
+	g.Go(func() error {
+		return s.eventBus.Subscribe(ctx, events.TaskTopic, events.TaskCompleted, s.handleTaskCompleted)
+	})
+
+	// Handle TaskFailed events
+	g.Go(func() error {
+		return s.eventBus.Subscribe(ctx, events.TaskTopic, events.TaskFailed, s.handleTaskFailed)
+	})
+
+	// Handle SubtasksPlanned events
+	g.Go(func() error {
+		return s.eventBus.Subscribe(ctx, events.TaskTopic, events.SubtasksPlanned, s.handleSubtasksPlanned)
+	})
+
+	// Wait for all subscriptions to complete or error
+	return g.Wait()
+}
+
+// handleTaskSubmitted processes TaskSubmitted events
+func (s *Service) handleTaskSubmitted(ctx context.Context, event events.Event) error {
+	s.logger.Debug().
+		Str("event_id", event.EventID).
+		Msg("Handling TaskSubmitted event")
+
+	// Extract the payload
+	payload, ok := event.Payload.(events.TaskSubmittedPayload)
+	if !ok {
+		return errors.New("invalid payload for TaskSubmitted event")
+	}
+
+	// Create a new task from the event data
+	task := NewTask(
+		payload.Goal,
+		TaskType(payload.TaskType),
+		"", // No parent for root tasks
+		payload.RootTaskID,
+	)
+
+	// If task ID is provided in the payload, use it
+	if payload.TaskID != "" {
+		task.TaskID = payload.TaskID
+	}
+
+	// Set the task as READY if it has no dependencies
+	if len(task.Dependencies) == 0 {
+		task.Status = TaskStatusReady
+	}
+
+	// Add metadata if provided
+	if payload.Metadata != nil {
+		task.Metadata = payload.Metadata
+	}
+
+	// Store the task
+	if err := s.store.CreateTask(ctx, task); err != nil {
+		return errors.Wrap(err, "failed to create task")
+	}
+
+	// If the task is already ready, emit a TaskReady event
+	if task.Status == TaskStatusReady {
+		readyEvent := events.NewEvent(
+			events.TaskReady,
+			s.serviceName,
+			events.TaskReadyPayload{
+				TaskID:     task.TaskID,
+				RootTaskID: task.RootTaskID,
+			},
+		)
+
+		if err := s.eventBus.Publish(ctx, events.TaskTopic, readyEvent); err != nil {
+			return errors.Wrap(err, "failed to publish TaskReady event")
+		}
+	}
+
+	return nil
+}
+
+// handleTaskCompleted processes TaskCompleted events
+func (s *Service) handleTaskCompleted(ctx context.Context, event events.Event) error {
+	s.logger.Debug().
+		Str("event_id", event.EventID).
+		Msg("Handling TaskCompleted event")
+
+	// Extract the payload
+	payload, ok := event.Payload.(events.TaskCompletedPayload)
+	if !ok {
+		return errors.New("invalid payload for TaskCompleted event")
+	}
+
+	// Get the task from the store
+	task, err := s.store.GetTask(ctx, payload.TaskID)
+	if err != nil {
+		return errors.Wrap(err, "failed to get task")
+	}
+
+	// Update task status and result
+	task.Status = TaskStatusCompleted
+	task.Result = payload.Result
+
+	// Save the updated task
+	if err := s.store.UpdateTask(ctx, task); err != nil {
+		return errors.Wrap(err, "failed to update task")
+	}
+
+	// Check dependents to see if any are now ready
+	if err := s.checkDependents(ctx, task.TaskID); err != nil {
+		return errors.Wrap(err, "failed to check dependents")
+	}
+
+	return nil
+}
+
+// handleTaskFailed processes TaskFailed events
+func (s *Service) handleTaskFailed(ctx context.Context, event events.Event) error {
+	s.logger.Debug().
+		Str("event_id", event.EventID).
+		Msg("Handling TaskFailed event")
+
+	// Extract the payload
+	payload, ok := event.Payload.(events.TaskFailedPayload)
+	if !ok {
+		return errors.New("invalid payload for TaskFailed event")
+	}
+
+	// Get the task from the store
+	task, err := s.store.GetTask(ctx, payload.TaskID)
+	if err != nil {
+		return errors.Wrap(err, "failed to get task")
+	}
+
+	// Update task status and error info
+	task.Status = TaskStatusFailed
+	task.ErrorInfo = payload.ErrorInfo
+
+	// Save the updated task
+	if err := s.store.UpdateTask(ctx, task); err != nil {
+		return errors.Wrap(err, "failed to update task")
+	}
+
+	return nil
+}
+
+// handleSubtasksPlanned processes SubtasksPlanned events
+func (s *Service) handleSubtasksPlanned(ctx context.Context, event events.Event) error {
+	s.logger.Debug().
+		Str("event_id", event.EventID).
+		Msg("Handling SubtasksPlanned event")
+
+	// Extract the payload
+	payload, ok := event.Payload.(events.SubtasksPlannedPayload)
+	if !ok {
+		return errors.New("invalid payload for SubtasksPlanned event")
+	}
+
+	// Get the parent task
+	parentTask, err := s.store.GetTask(ctx, payload.ParentTaskID)
+	if err != nil {
+		return errors.Wrap(err, "failed to get parent task")
+	}
+
+	// Create tasks for each subtask in the payload
+	for _, subtaskInfo := range payload.Subtasks {
+		subtask := NewTask(
+			subtaskInfo.Goal,
+			TaskType(subtaskInfo.TaskType),
+			parentTask.TaskID,
+			parentTask.RootTaskID,
+		)
+
+		// Use the provided task ID if any
+		if subtaskInfo.TaskID != "" {
+			subtask.TaskID = subtaskInfo.TaskID
+		}
+
+		// Add dependencies
+		subtask.Dependencies = subtaskInfo.Dependencies
+
+		// Set initial status based on dependencies
+		if len(subtask.Dependencies) == 0 {
+			subtask.Status = TaskStatusReady
+		} else {
+			subtask.Status = TaskStatusPendingDeps
+		}
+
+		// Store the subtask
+		if err := s.store.CreateTask(ctx, subtask); err != nil {
+			return errors.Wrap(err, fmt.Sprintf("failed to create subtask %s", subtask.TaskID))
+		}
+
+		// Set up dependency relationships
+		for _, depID := range subtaskInfo.Dependencies {
+			if err := s.store.AddDependency(ctx, subtask.TaskID, depID); err != nil {
+				return errors.Wrap(err, "failed to add dependency")
+			}
+		}
+
+		// If the subtask is ready, emit a TaskReady event
+		if subtask.Status == TaskStatusReady {
+			readyEvent := events.NewEvent(
+				events.TaskReady,
+				s.serviceName,
+				events.TaskReadyPayload{
+					TaskID:     subtask.TaskID,
+					RootTaskID: subtask.RootTaskID,
+				},
+			)
+
+			if err := s.eventBus.Publish(ctx, events.TaskTopic, readyEvent); err != nil {
+				return errors.Wrap(err, "failed to publish TaskReady event")
+			}
+		}
+	}
+
+	return nil
+}
+
+// checkDependents checks if any dependent tasks are now ready after a task completes
+func (s *Service) checkDependents(ctx context.Context, taskID string) error {
+	// Get the list of dependent tasks
+	dependents, err := s.store.GetDependents(ctx, taskID)
+	if err != nil {
+		return errors.Wrap(err, "failed to get dependents")
+	}
+
+	// Create a map of completed tasks for efficient lookup
+	completedTasks := map[string]bool{taskID: true}
+
+	// Check each dependent
+	for _, depID := range dependents {
+		// Get the dependent task
+		task, err := s.store.GetTask(ctx, depID)
+		if err != nil {
+			return errors.Wrap(err, "failed to get dependent task")
+		}
+
+		// Check if all dependencies are complete
+		if task.IsReady(completedTasks) {
+			// Update the task status
+			task.Status = TaskStatusReady
+			if err := s.store.UpdateTask(ctx, task); err != nil {
+				return errors.Wrap(err, "failed to update task status")
+			}
+
+			// Emit a TaskReady event
+			readyEvent := events.NewEvent(
+				events.TaskReady,
+				s.serviceName,
+				events.TaskReadyPayload{
+					TaskID:     task.TaskID,
+					RootTaskID: task.RootTaskID,
+				},
+			)
+
+			if err := s.eventBus.Publish(ctx, events.TaskTopic, readyEvent); err != nil {
+				return errors.Wrap(err, "failed to publish TaskReady event")
+			}
+		}
+	}
+
+	return nil
+}
+
+// CreateRootTask creates a new root task and emits a TaskSubmitted event
+func (s *Service) CreateRootTask(ctx context.Context, goal string, taskType TaskType, metadata map[string]interface{}) (string, error) {
+	// Create a new task with a unique ID
+	task := NewTask(goal, taskType, "", "")
+
+	// Emit a TaskSubmitted event
+	submitEvent := events.NewEvent(
+		events.TaskSubmitted,
+		s.serviceName,
+		events.TaskSubmittedPayload{
+			TaskID:     task.TaskID,
+			RootTaskID: task.TaskID, // Root task is its own root
+			Goal:       goal,
+			TaskType:   string(taskType),
+			Metadata:   metadata,
+		},
+	)
+
+	if err := s.eventBus.Publish(ctx, events.TaskTopic, submitEvent); err != nil {
+		return "", errors.Wrap(err, "failed to publish TaskSubmitted event")
+	}
+
+	return task.TaskID, nil
+}
+
+// GetTask retrieves a task by ID
+func (s *Service) GetTask(ctx context.Context, taskID string) (*Task, error) {
+	return s.store.GetTask(ctx, taskID)
+}
+
+// GetTasksByRoot retrieves all tasks for a given root task
+func (s *Service) GetTasksByRoot(ctx context.Context, rootTaskID string) ([]*Task, error) {
+	return s.store.GetTasksByRootID(ctx, rootTaskID)
+}
