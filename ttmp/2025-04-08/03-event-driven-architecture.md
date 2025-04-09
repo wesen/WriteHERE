@@ -189,7 +189,34 @@ This is one of the most critical services in the system, responsible for maintai
 
 #### 4.1.3 Worker Services
 
-The internal structure (Agent/ActionExecutor/Tools) can be implemented with clear interfaces to maintain the modularity of the original Python design while leveraging Go's type system.
+The internal structure of workers, especially the `ExecutionWorker`, will mirror the concepts found in the Python implementation (`claude_fc_react.py` and `regular.py`) but adapted for Go and the event-driven model:
+
+- **Execution Worker (`pkg/workers/execution`):**
+
+  - Consumes `TaskAssigned` events for execution-type tasks.
+  - Fetches task details and context (results from dependencies).
+  - **Instantiates an `Agent` struct/logic:** This internal component encapsulates the core task-processing loop (e.g., ReAct). It receives the goal, context, and an `ActionExecutor`.
+  - **Agent Logic (e.g., ReAct Loop):**
+    - Manages internal state (history of thoughts, actions, observations).
+    - Constructs prompts for the LLM, including the goal, state, history, and available action descriptions (obtained from the `ActionExecutor`). This mirrors the prompt assembly logic in Python's `get_llm_output` and `claude_fc_react.py`.
+    - Calls the `llms.Client` interface.
+    - Parses the LLM response to identify thoughts and requested actions (name and arguments).
+    - Invokes the `ActionExecutor` with the requested action.
+    - Processes the `ActionResult`, updates state, and continues the loop until a termination condition (e.g., `FinishAction` requested by LLM, max steps).
+  - **Holds an `ActionExecutor` instance:** Manages registered `Action` implementations.
+  - Publishes `TaskCompleted` or `TaskFailed`.
+
+- **Planning Worker (`pkg/workers/planning`):**
+
+  - Consumes `TaskAssigned` events for planning-type tasks.
+  - Fetches task details.
+  - **Instantiates Planning Logic:** Constructs prompts (similar to `UpdateAtomPlanningAgent` and `get_llm_output` logic) to ask the LLM to decompose the task. This might involve checking atomicity first or directly asking for a plan.
+  - Calls the `llms.Client` interface, likely requesting JSON output.
+  - Parses the LLM response (the plan).
+  - Converts the plan into `events.Subtask` structures, generating IDs and resolving dependencies.
+  - Publishes `SubtasksPlanned` and `TaskCompleted` (for the planning task itself).
+
+- **Other Workers (Future):** Aggregation, Reflection workers would follow similar patterns, consuming `TaskAssigned`, executing specific logic (potentially LLM calls via `llms.Client` with tailored prompts based on `regular.py`'s patterns), and publishing results.
 
 ## 5. Key Events and Control Flow
 
@@ -232,26 +259,34 @@ Planning tasks are particularly important as they create the task graph structur
 
 #### 5.3.2 ReAct Execution Task Flow
 
-    **Task Execution (Example: ReAct Execution Task):**
+**Task Execution (Example: ReAct Execution Task using `ExecutionWorker`):**
 
-    - `Execution Worker` <- `EventBus`: Consume `TaskAssigned` (where `worker_type` is 'execution' or similar).
-    - `Execution Worker` -> `StateService`/`StateStore`: Fetch task details (`task_id`), including goal and potentially previous context/results from dependencies.
-    - `Execution Worker`: Instantiates a suitable Agent (e.g., `ClaudeFcReActAgent`). The agent might load its previous state from `TaskRepresentation.agent_state` if resuming.
-    - `Agent`: Initializes an `ActionExecutor` with available tools (`BaseAction` implementations).
-    - **(Loop):**
-      - `Agent` -> `LLM `: Send current state/goal/history, request next thought/action.
-      - `Agent` <- `LLM `: Receive LLM response (e.g., thought + action request like `bing_search(query='...')`).
-      - `Agent` -> `ActionExecutor`: Execute the requested action (`bing_search`) with args (`query`).
-      - `ActionExecutor` -> `BingBrowser Action`: Calls the `run` method.
-      - `BingBrowser Action`: Performs the web search (external HTTP call).
-      - `ActionExecutor` <- `BingBrowser Action`: Receives `ActionReturn` (with results/status).
-      - `Agent` <- `ActionExecutor`: Receives `ActionReturn`.
-      - `Agent`: Updates its internal state, prepares for next LLM call or decides to finish.
-    - **(End Loop):**
-    - `Agent`: Formulates the final result for the task.
-    - `Execution Worker` -> `EventBus`: Publish `TaskCompleted` (or `TaskFailed`) event (payload: `task_id`, final `AgentReturn` structure including result, status codes, etc.).
+- `Execution Worker` <- `EventBus`: Consume `TaskAssigned` (where `worker_type` matches).
+- `Execution Worker` -> `StateService`/`StateStore`: Fetch task details (`task_id`), goal, context (dependency results).
+- `Execution Worker`: Instantiates its internal `Agent` struct/logic.
+- `Execution Worker`: Instantiates `ActionExecutor` and registers available Go `Action` implementations (e.g., `SearchAction`, `FinishAction`).
+- **(Agent Loop):**
+  - `Agent`: Gets available action descriptions/schemas from `ActionExecutor`.
+  - `Agent`: Constructs prompt including goal, history, context, and action descriptions (similar to `claude_fc_react.py` prompt building).
+  - `Agent` -> `llms.Client`: Call `ChatCompletion`.
+  - `Agent`: Parses LLM response for thought and action invocation (name, args) (similar to `_parse_output`).
+  - **If Action Invoked:**
+    - `Agent` -> `ActionExecutor`: Execute the requested action (e.g., `search`) with args.
+    - `ActionExecutor` -> `SearchAction`: Calls the `Execute` method of the Go `Action`.
+    - `SearchAction`: Performs the search (e.g., external API call).
+    - `ActionExecutor` <- `SearchAction`: Receives `ActionResult` (with results/status).
+    - `Agent` <- `ActionExecutor`: Receives `ActionResult`.
+    - `Agent`: Formats result as observation, updates history.
+  - **If FinishAction Invoked:**
+    - `Agent`: Extracts final answer from the LLM response associated with `FinishAction`.
+    - `Agent`: Signals loop termination.
+  - **If No Action / Max Turns / Error:**
+    - `Agent`: Handles appropriately, potentially signaling loop termination with failure/default result.
+- **(End Loop):**
+- `Agent`: Returns final result or error status to the `Execution Worker`.
+- `Execution Worker` -> `EventBus`: Publish `TaskCompleted` (or `TaskFailed`) event (payload: `task_id`, final result structure).
 
-The ReAct pattern (Reasoning + Acting) is particularly complex and benefits greatly from the structured error handling and concurrency control provided by Go. The loop structure above can be implemented with clear state transitions and cancellation points.
+This flow directly maps the core ReAct logic from Python's `claude_fc_react.py` onto the Go `ExecutionWorker`, using the Go `Action` interface and `llms.Client`.
 
 ### 5.4 Subtask Creation Flow
 
@@ -356,18 +391,25 @@ To address these challenges:
 
 ## 9. Tool/Action Management Details (Based on Executor)
 
-The event-driven architecture needs a way to manage the tools (Actions) available to workers, mirroring the `executor` module's approach:
+The event-driven architecture needs a way to manage the tools (Actions) available to workers, mirroring the Python `executor` module's approach (`base_action.py`, `action_executor.py`).
 
-- **Action Definition (`BaseAction`, `@tool_api`):** Individual tools should still be defined in code, likely using a similar `BaseAction` structure with decorators (`@tool_api`) to auto-generate descriptions from signatures and docstrings. These definitions reside within the codebase of the relevant Worker services.
-- **Action Execution (`ActionExecutor`):** Each worker instance requiring tool access would contain an `ActionExecutor` (or similar logic) responsible for:
-  - Loading/discovering available `BaseAction` implementations within that worker.
-  - Parsing input arguments for a chosen action.
-  - Invoking the correct action method.
-  - Handling standard actions (Finish, Invalid, NoAction).
-  - Returning structured results (`ActionReturn`).
-- **Discovery/Registry:**
-  - _Option 1 (Static):_ Worker types are deployed with a known, fixed set of tools. The `Scheduler` knows that "ExecutionWorker_TypeA" has tools [X, Y] and assigns tasks accordingly.
-  - _Option 2 (Dynamic Registry):_ Workers, upon startup, register their available tools (the structured descriptions generated from `@tool_api`) with the central `Capability Registry Service`. The `Scheduler` queries this registry to find suitable workers for tasks based on `required_capabilities`.
+- **Action Definition (Go `Action` Interface):** Individual tools are defined as Go structs implementing the `pkg/actions.Action` interface. This interface requires methods like `Name()`, `Description()`, `ParameterSchema()` (to provide the structured description for the LLM, analogous to Python's `@tool_api` generation), and `Execute()`. These definitions reside within the `pkg/actions` directory or subdirectories. Core actions like `FinishAction` (from `builtin_actions.py`) must also be ported.
+- **Action Execution (Go `ActionExecutor`):** Each worker instance requiring tool access (primarily `ExecutionWorker`) will contain an `ActionExecutor` struct (`pkg/actions/executor.go`). It will be responsible for:
+  - Holding a map of registered `Action` implementations.
+  - Providing a method to get descriptions/schemas of all registered actions (for the Agent's prompt).
+  - Receiving an action name and arguments (parsed from the LLM response by the Agent).
+  - Looking up the corresponding `Action` in its map.
+  - Validating input arguments against the `Action`'s schema.
+  - Invoking the `Execute` method of the correct `Action`.
+  - Returning the `ActionResult`.
+- **Discovery/Registry (Go `actionRegistry`):**
+  - A simple map-based registry (`pkg/actions/registry.go`) is used. Actions register themselves (typically via `init()` functions) using `RegisterAction`.
+  - The `ActionExecutor` is initialized with the actions from this registry.
+  - _(Future Improvement):_ Could evolve into the dynamic registry service described previously if worker capabilities become highly variable, but the static registry is sufficient for now.
+
+### 9.1 Implementing Action System in Go (Recap)
+
+This approach provides a clear, type-safe way to define, register, and execute actions within the Go workers, maintaining the self-describing nature required for LLM interaction, similar to the Python implementation. Porting actions like `BingBrowser` will involve creating a corresponding Go struct implementing the `Action` interface and encapsulating the necessary search/selection/summarization logic (potentially using external Go libraries or further LLM calls via the `llms.Client`).
 
 ### 9.1 Implementing Action System in Go
 
@@ -422,6 +464,7 @@ Go lacks Python's introspection and decorator capabilities, but we can achieve s
    ```
 
 This provides a clear, type-safe way to define and register actions while maintaining the self-describing nature that made the original Python implementation flexible.
+
 
 ## 10. Implementation Roadmap
 

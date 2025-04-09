@@ -91,6 +91,13 @@ type TaskAssignedPayload struct {
 	WorkerID   string `json:"worker_id"`
 }
 
+// TaskStartedPayload represents the data for a TaskStarted event
+type TaskStartedPayload struct {
+	TaskID     string `json:"task_id"`
+	RootTaskID string `json:"root_task_id,omitempty"`
+	WorkerID   string `json:"worker_id,omitempty"` // Optional: ID of the specific worker instance
+}
+
 // TaskCompletedPayload represents the data for a TaskCompleted event
 type TaskCompletedPayload struct {
 	TaskID     string      `json:"task_id"`

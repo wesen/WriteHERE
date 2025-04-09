@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 	"sync"
-
-	"github.com/pkg/errors"
 )
 
 // ActionStatus represents the outcome of an action execution.
@@ -15,6 +13,8 @@ const (
 	ActionStatusSuccess ActionStatus = "success"
 	ActionStatusFailure ActionStatus = "failure"
 	ActionStatusRunning ActionStatus = "running" // Potentially for long-running actions
+	ActionStatusPending ActionStatus = "pending" // Potentially for long-running actions
+	ActionStatusError   ActionStatus = "error"   // Potentially for long-running actions
 )
 
 // Action represents a unit of work that can be executed, similar to a tool or function call.
@@ -80,36 +80,4 @@ func ListActions() []string {
 		names = append(names, name)
 	}
 	return names
-}
-
-// --- Action Executor ---
-
-// ActionExecutor is responsible for finding and executing registered actions.
-type ActionExecutor struct {
-	// Potentially add configuration here later (e.g., timeouts, specific action subsets)
-}
-
-// NewActionExecutor creates a new ActionExecutor.
-func NewActionExecutor() *ActionExecutor {
-	return &ActionExecutor{}
-}
-
-// ExecuteAction finds an action by name in the registry and executes it with the provided arguments.
-func (e *ActionExecutor) ExecuteAction(ctx context.Context, actionName string, args map[string]interface{}) (ActionResult, error) {
-	action, exists := GetAction(actionName)
-	if !exists {
-		emsg := fmt.Sprintf("action '%s' not found", actionName)
-		return ActionResult{Status: ActionStatusFailure, Error: emsg}, errors.New(emsg)
-	}
-
-	// TODO: Add argument validation against ParameterSchema before executing
-
-	result, err := action.Execute(ctx, args)
-	if err != nil {
-		// The action itself might have already populated ActionResult.Error,
-		// but we wrap the Go error for context.
-		return result, errors.Wrapf(err, "failed to execute action '%s'", actionName)
-	}
-
-	return result, nil
 }

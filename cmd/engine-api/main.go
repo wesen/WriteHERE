@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"writehere-go/pkg/events"
+	"writehere-go/pkg/llms/openai"
 	"writehere-go/pkg/scheduler"
 	"writehere-go/pkg/state"
 	"writehere-go/pkg/workers/execution"
@@ -89,8 +90,12 @@ func run(cmd *cobra.Command, args []string) error {
 	// Initialize the Scheduler Service
 	schedulerService := scheduler.NewService(eventBus, store)
 
+	// Initialize LLM Client
+	llmClient := openai.NewClient("")
+	log.Info().Msg("Initialized OpenAI LLM Client")
+
 	// Initialize Worker Services
-	planningWorker := planning.NewService(eventBus, store)
+	planningWorker := planning.NewService(eventBus, store, llmClient)
 	executionWorker := execution.NewService(eventBus, store)
 
 	// Create HTTP server
@@ -188,51 +193,62 @@ func run(cmd *cobra.Command, args []string) error {
 
 	// Start the State Service
 	g.Go(func() error {
+		log.Info().Msg("Starting State Service")
 		return stateService.Start(gCtx)
 	})
 
 	// Start the Scheduler Service
 	g.Go(func() error {
+		log.Info().Msg("Starting Scheduler Service")
 		return schedulerService.Start(gCtx)
 	})
 
 	// Start the Planning Worker Service
 	g.Go(func() error {
+		log.Info().Msg("Starting Planning Worker Service")
 		return planningWorker.Start(gCtx)
 	})
 
 	// Start the Execution Worker Service
 	g.Go(func() error {
+		log.Info().Msg("Starting Execution Worker Service")
 		return executionWorker.Start(gCtx)
 	})
 
 	// Start the HTTP server
 	g.Go(func() error {
 		log.Info().Int("port", port).Msg("Starting API server")
-		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			return errors.Wrap(err, "server error")
 		}
+		log.Info().Msg("API server stopped listening")
 		return nil
 	})
 
 	// Handle server shutdown
 	g.Go(func() error {
 		<-gCtx.Done()
-		log.Info().Msg("Shutting down server")
+		log.Info().Msg("Initiating graceful server shutdown")
 
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer shutdownCancel()
 
-		return server.Shutdown(shutdownCtx)
+		if err := server.Shutdown(shutdownCtx); err != nil {
+			log.Error().Err(err).Msg("Error during server shutdown")
+			return errors.Wrap(err, "server shutdown failed")
+		}
+		log.Info().Msg("Server shutdown complete")
+		return nil
 	})
 
 	// Wait for all goroutines to complete
+	log.Info().Msg("All services started. Waiting for shutdown signal or error.")
 	if err := g.Wait(); err != nil {
-		if !errors.Is(err, context.Canceled) {
+		if !errors.Is(err, context.Canceled) && !errors.Is(err, http.ErrServerClosed) {
 			log.Error().Err(err).Msg("Error during service execution or shutdown")
 			return errors.Wrap(err, "service error")
 		}
-		log.Info().Msg("Services shut down due to context cancellation")
+		log.Info().Msg("Services shut down due to context cancellation or server closure")
 	}
 
 	log.Info().Msg("Application shut down gracefully")

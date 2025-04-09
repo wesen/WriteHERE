@@ -6,91 +6,107 @@ This document outlines the progress made in porting the core WriteHERE engine fr
 
 This document serves as a handover guide for developers joining the project, explaining what has been built, the key architectural decisions made, and the immediate next steps required to continue development.
 
-## 2. Accomplishments So Far (Phase 1 Complete)
+## 2. Accomplishments So Far (Phase 1, 2 & 3 Started)
 
-We have successfully implemented the foundational infrastructure (Phase 1) of the event-driven architecture:
+We have implemented the foundational infrastructure (Phase 1) and begun work on the Scheduler Framework (Phase 2) and Action System (Phase 3):
 
-- **Project Setup:** Initialized the Go module (`github.com/go-go-golems/writehere-go`) and established the basic directory structure.
-- **Core Packages:**
-  - `pkg/events`: Defines event structures (`Event`, `EventType`, specific payloads like `TaskSubmittedPayload`), serialization logic, and the `EventBus` implementation using Watermill.
-  - `pkg/state`: Defines the core `Task` model, `TaskStatus` enum, `TaskType` enum, an `InMemoryStore` for task persistence, and the `StateService`.
-- **Event Bus (`pkg/events/bus.go`):** Implemented using Watermill with an in-memory `gochannel` Pub/Sub. It includes middleware for recovery, correlation IDs, and retries. Provides `Publish` and `Subscribe` methods.
-- **State Management (`pkg/state/`):**
-  - `task.go`: Defines the `Task` struct reflecting the design document, including fields for dependencies, status, results, etc.
-  - `store.go`: Provides an `InMemoryStore` implementation satisfying the `Store` interface for basic CRUD operations, dependency management, and querying tasks (e.g., `GetReadyTasks`).
-  - `service.go`: The `StateService` acts as the central manager of task state. It subscribes to `TaskSubmitted`, `TaskCompleted`, `TaskFailed`, and `SubtasksPlanned` events. It updates the `Store` accordingly and is responsible for checking task dependencies and publishing `TaskReady` events when a task's prerequisites are met.
-- **API Gateway (`cmd/engine-api/main.go`):** A basic HTTP server built using Go's standard `net/http` library and Cobra for command-line argument parsing. It provides:
-  - `POST /api/tasks`: Endpoint to submit a new root task (goal, type, metadata). This triggers the `StateService`'s `CreateRootTask` method, which publishes a `TaskSubmitted` event.
-  - `GET /api/tasks/{task_id}`: Retrieves the current state of a specific task.
-  - `GET /api/tasks/root/{root_task_id}`: Retrieves all tasks associated with a given root task ID.
-- **Dependencies & Tooling:** Integrated Zerolog for logging, `github.com/pkg/errors` for error handling, Cobra for CLI, and `golang.org/x/sync/errgroup` for managing concurrent operations.
+- **Project Setup & Core Packages (Phase 1):**
+  - Go module (`github.com/go-go-golems/writehere-go`), directory structure.
+  - `pkg/events`: Event definitions (`TaskSubmitted`, `TaskReady`, `TaskAssigned`, `TaskStarted`, `TaskCompleted`, `TaskFailed`, `SubtasksPlanned`), `EventBus` (Watermill/GoChannel).
+  - `pkg/state`: `Task` model (with `RUNNING` status), `Store` interface, `InMemoryStore`, `StateService` (handles `TaskSubmitted`, `TaskCompleted`, `TaskFailed`, `TaskStarted`, `SubtasksPlanned`).
+  - `cmd/engine-api`: API gateway (`POST /tasks`, `GET /tasks/{id}`, `GET /tasks/root/{root_id}`).
+- **Scheduler Framework (Phase 2):**
+  - `pkg/scheduler`: `Service` subscribes to `TaskReady`, determines worker type, publishes `TaskAssigned`.
+  - `pkg/workers/planning`: Stubbed `Service` subscribes to `TaskAssigned`, filters for `planning-worker`, publishes `TaskStarted`, generates _dummy_ subtasks, publishes `SubtasksPlanned`, then publishes `TaskCompleted`.
+  - `pkg/workers/execution`: Stubbed `Service` subscribes to `TaskAssigned`, filters for `execution-worker`, publishes `TaskStarted`, logs processing (includes stubbed `ActionExecutor` call for `COMPOSITION` type), publishes `TaskCompleted` or `TaskFailed`.
+  - Integration: All services (`StateService`, `Scheduler`, `PlanningWorker`, `ExecutionWorker`) are initialized and run via `errgroup` in `cmd/engine-api/main.go`.
+- **Action System (Phase 3):**
+  - `pkg/actions`: Defined `Action` interface, `ActionResult`, `ActionStatus`, registry (`RegisterAction`, `GetAction`), and `ActionExecutor`.
+  - `pkg/actions/echo.go`: Implemented a sample `EchoAction`.
+  - Integration: `ActionExecutor` is initialized in `ExecutionWorker` and used in its stubbed logic.
+- **Dependencies & Tooling:** Zerolog, `pkg/errors`, Cobra, `errgroup`.
 
 ## 3. Key Architectural Decisions
 
-- **Event-Driven Core:** Communication between major components (API Gateway, State Service, Scheduler, Workers) happens primarily via events published to and consumed from the event bus.
-- **Watermill:** Chosen as the Go library for handling Pub/Sub interactions, providing abstractions over different brokers and useful middleware. Currently uses the simple `gochannel` implementation, but can be swapped later (e.g., to Kafka, Google Cloud Pub/Sub).
-- **Explicit Scheduler (Phase 2):** We explicitly decided _against_ having workers subscribe directly to `TaskReady` events. Instead, a dedicated `Scheduler` service will subscribe to `TaskReady`, determine the appropriate worker type, and publish a `TaskAssigned` event. This approach was chosen for:
-  - **Efficiency:** Avoids having every worker fetch task details just to check the type.
-  - **Race Condition Mitigation:** Simplifies avoiding multiple workers picking up the same task compared to distributed locking/CAS on `TaskReady`.
-  - **Centralized Control:** Provides a natural place for future prioritization, load balancing, and capability-based routing logic.
-  - **Clearer State Flow:** Introduces a distinct `ASSIGNED` state.
-- **State Service as Truth Source:** The `StateService` is responsible for consuming events that signify state changes and is the only component designed to modify task state in the `Store`. It also determines when tasks become `READY`.
-- **In-Memory Store (Initial):** Started with `InMemoryStore` for simplicity. This will likely need to be replaced with a persistent database (e.g., PostgreSQL, MongoDB) for production use.
+- **Event-Driven Core:** Communication via events.
+- **Watermill:** Using `gochannel` for now.
+- **Explicit Scheduler:** `Scheduler` handles `TaskReady` -> `TaskAssigned`.
+- **State Service as Truth Source:** Manages state updates based on events.
+- **Refined State Flow:** Introduced `TaskStarted` event and `RUNNING` status. Workers publish `TaskStarted` upon receiving `TaskAssigned`.
+- **In-Memory Store (Initial):** To be replaced later.
 
-## 4. Current System Setup & Flow
+## 4. Current System Setup & Flow (Updated)
 
 1.  Run `go run cmd/engine-api/main.go`.
-2.  Send a `POST` request to `http://localhost:8080/api/tasks` with JSON body like `{"goal": "Write a story about a dragon", "task_type": "COMPOSITION"}`.
-3.  The **API Gateway** receives the request.
-4.  The **API Gateway** calls `stateService.CreateRootTask`.
-5.  The **State Service** publishes a `TaskSubmitted` event to the `events.TaskTopic`.
-6.  The **State Service** (also subscribed) consumes the `TaskSubmitted` event.
-7.  The `handleTaskSubmitted` function creates the `Task` object in the `InMemoryStore`.
-8.  Since it's a root task with no dependencies, the task status is set to `READY`.
-9.  The `handleTaskSubmitted` function publishes a `TaskReady` event to the `events.TaskTopic`.
-10. **Currently, no service consumes `TaskReady`, so the process stops here.**
-11. You can query `GET /api/tasks/{task_id}` to see the task in the `READY` state.
+2.  Send a `POST` request to `http://localhost:8080/api/tasks` with JSON body like `{"goal": "Outline a blog post about Go", "task_type": "PLANNING"}`.
+3.  **API Gateway** -> `stateService.CreateRootTask`.
+4.  **State Service** publishes `TaskSubmitted`.
+5.  **State Service** consumes `TaskSubmitted`, creates `Task` (status `READY`), publishes `TaskReady`.
+6.  **Scheduler** consumes `TaskReady`, determines worker (`planning-worker`), publishes `TaskAssigned`.
+7.  **Planning Worker** consumes `TaskAssigned` (matches type), publishes `TaskStarted`.
+8.  **State Service** consumes `TaskStarted`, updates task status to `RUNNING`.
+9.  **Planning Worker** generates dummy subtasks (e.g., two `EXECUTION` tasks), publishes `SubtasksPlanned`.
+10. **State Service** consumes `SubtasksPlanned`, creates new subtask records (e.g., subtask1 `READY`, subtask2 `PENDING_DEPS`), publishes `TaskReady` for subtask1.
+11. **Planning Worker** publishes `TaskCompleted` (for the original planning task).
+12. **State Service** consumes `TaskCompleted`, updates original planning task status to `COMPLETED`.
+13. **Scheduler** consumes `TaskReady` (for subtask1), determines worker (`execution-worker`), publishes `TaskAssigned`.
+14. **Execution Worker** consumes `TaskAssigned`, publishes `TaskStarted`.
+15. **State Service** consumes `TaskStarted`, updates subtask1 status to `RUNNING`.
+16. **Execution Worker** runs stubbed logic (maybe calls `echo` action), publishes `TaskCompleted`.
+17. **State Service** consumes `TaskCompleted` (for subtask1), updates subtask1 status to `COMPLETED`. Checks dependents (subtask2), sees its dependencies (subtask1) are now complete, updates subtask2 status to `READY`, publishes `TaskReady` (for subtask2).
+18. Flow continues similarly for subtask2...
+19. You can query `GET /api/tasks/{task_id}` or `GET /api/tasks/root/{root_task_id}` to observe the state changes.
 
-## 5. Next Steps (Phase 2 & 3 Implementation)
+## 5. Next Steps (Updated)
 
-The immediate focus is on implementing the Scheduler and the basic structure for Worker services.
+With the foundational LLM client and basic Action system (interface, registry, built-ins, executor) in place, the next priorities involve implementing the core agent logic and porting key actions:
 
-1.  **Implement the Scheduler Service (`pkg/scheduler`)**:
+1.  **Implement Real Planning Logic (`pkg/workers/planning`)**: **[DONE]**
 
-    - Create `scheduler.Service`.
-    - Subscribe to `TaskReady` events on `events.TaskTopic`.
-    - In the handler (`handleTaskReady`):
-      - Fetch the full `Task` details from the `state.Store` using the `TaskID` from the event payload.
-      - Determine the target `WorkerType` string based on `task.TaskType` (e.g., map `state.TaskTypePlanning` to `"planning-worker"`).
-      - Publish a `TaskAssigned` event to `events.TaskTopic` containing the `TaskID`, `RootTaskID`, and the determined `WorkerType`.
-    - Integrate the `Scheduler` into `cmd/engine-api/main.go` (or a separate command) so it runs alongside the `StateService`.
+    - [x] Replace dummy subtask generation with actual LLM calls (`llms.Client`).
+    - [x] Define a prompt structure (`systemPrompt`, `userPrompt`) for task decomposition requesting JSON output.
+    - [x] Integrate the `llms.Client` (`go-openai` implementation).
+    - [x] Parse the LLM response (`llmPlanResponse`) into `events.Subtask` structures, handling dependency mapping.
+    - [x] Handle potential LLM/parsing errors gracefully (publish `TaskFailed`).
 
-2.  **Implement a Basic Planning Worker Service (`pkg/workers/planning`)**:
+2.  **Implement Basic ReAct Agent Logic (`pkg/workers/execution`)**: **[NEXT]**
 
-    - Create `planning.Service`. Define its `workerType` as `"planning-worker"`.
-    - Subscribe to `TaskAssigned` events on `events.TaskTopic`.
-    - In the handler (`handleTaskAssigned`):
-      - Decode the event payload (`events.TaskAssignedPayload`).
-      - **Filter:** Check if `payload.WorkerType` matches this worker's type (`"planning-worker"`). If not, return `nil` immediately (ACK message).
-      - Fetch the full `Task` details from the `state.Store`.
-      - **(Stub Logic):** Initially, log that the planning task is being "processed".
-      - **(Stub Output):** Publish a `TaskCompleted` event for the planning task itself (use `events.NewEvent` and `eventBus.Publish`).
-      - **(Future):** This is where the actual planning logic (calling LLMs, generating subtasks) will go, eventually publishing `SubtasksPlanned` first, then `TaskCompleted`.
-    - Integrate the `PlanningWorker` into `cmd/engine-api/main.go` (or a separate command).
+    - [ ] **Inject Dependencies:** Modify `execution.NewService` to accept `llms.Client` and initialize an `actions.ActionExecutor`.
+    - [ ] **Core ReAct Loop:** Inside `handleTaskAssigned`:
+      - [ ] Fetch task details and context (dependency results).
+      - [ ] Get available action schemas using `actionExecutor.GetActionSchemas()`.
+      - [ ] Implement the core loop (max turns, history management):
+        - [ ] Construct the prompt using goal, history, context, action schemas (inspired by `claude_fc_react.py`).
+        - [ ] Call `llmClient.ChatCompletion`.
+        - [ ] **Parse LLM Output:** Extract thought and action invocation (e.g., using regex or structured output if the LLM supports it). Handle cases where no action is returned (`NoAction`) or the action is invalid (`InvalidAction`).
+        - [ ] **Execute Action:** If an action is requested, call `actionExecutor.ExecuteAction(actionName, args)`.
+        - [ ] **Handle Finish:** If `FinishAction` is executed, extract the final answer from `ActionResult.Data` and break the loop.
+        - [ ] **Update History:** Append thought, action request, and observation (from `ActionResult.Result`) to the loop's history.
+        - [ ] Handle action execution errors.
+    - [ ] **Publish Result:** After the loop terminates (finish, max turns, error), publish `TaskCompleted` with the final answer or `TaskFailed`.
+    - [ ] **Prompts:** Define system/user prompts suitable for a generic ReAct agent, instructing it to use the provided actions to achieve the goal.
 
-3.  **Implement a Basic Execution Worker Service (`pkg/workers/execution`)**:
+3.  **Expand Action Library (`pkg/actions`)**: **[NEXT, Parallel]**
 
-    - Follow the same pattern as the Planning Worker, but with `workerType` as `"execution-worker"` (or similar).
-    - The stub logic should just log execution and publish `TaskCompleted`.
-    - **(Future):** This worker will eventually contain the agent logic (like ReAct), action execution, and LLM calls for content generation/reasoning/retrieval.
+    - [ ] **Port `BingBrowser` (`bing_browser.py`) -> `SearchAction` (`pkg/actions/search.go`):**
+      - [ ] Define `SearchAction` struct implementing `actions.Action`.
+      - [ ] Implement `ParameterSchema` (e.g., for `query` argument).
+      - [ ] Implement `Execute`: This will require integrating a Go web search library (e.g., calling a search API like SerpApi, Google Search API, or a browser automation tool) and potentially logic for selecting/summarizing results (maybe simple for now, or requires further LLM calls via `llms.Client`). Mimic the core functionality of `BingBrowser.run`.
+      - [ ] Register the `SearchAction` in `search.go`'s `init()`.
+    - [ ] **(Optional) Port File I/O Actions:** Consider simple `ReadFileAction` and `WriteFileAction` if needed early on.
+    - [ ] **Ensure Built-in Actions are Registered:** Verify `FinishAction`, `InvalidAction`, `NoAction` from `builtin.go` are correctly registered via `init()`. [DONE]
 
-4.  **Refine State Transitions:** Ensure the `StateService` correctly handles the `ASSIGNED` status once the `Scheduler` publishes `TaskAssigned` events (this might require adding a handler for `TaskAssigned` in the `StateService` or having workers update the status upon starting). _Self-correction: It's cleaner for the worker receiving `TaskAssigned` to potentially update the state to `RUNNING` via an event or direct store update if necessary, rather than adding that complexity to the StateService._
+4.  **Configuration Management**: **[Later]**
 
-5.  **Implement Action System (`pkg/actions`)**:
-    - Define the `Action` interface (`Name`, `Description`, `ParameterSchema`, `Execute`).
-    - Create a registration mechanism for actions.
-    - Port a simple `BaseAction` from Python (e.g., a simple calculator or echo tool).
-    - Implement a basic `ActionExecutor` within the `ExecutionWorker` to load and run registered actions.
+    - [ ] Introduce Viper or similar.
+    - [ ] Make LLM API keys, model names, worker types, prompts configurable.
+    - [ ] Pass config to `NewService` functions.
+
+5.  **Testing**: **[Later]**
+    - [ ] Unit tests for `PlanningWorker` LLM logic (mock `llms.Client`).
+    - [ ] Unit tests for `ExecutionWorker` ReAct loop (mock `llms.Client`, `actions.ActionExecutor`).
+    - [ ] Unit tests for individual `Actions` (mock external calls).
+    - [ ] Integration tests for full Submit -> Plan -> Execute flow.
 
 ## 6. What to Pay Attention To
 
@@ -102,4 +118,4 @@ The immediate focus is on implementing the Scheduler and the basic structure for
 - **Observability:** Maintain clear logging. Consider adding distributed tracing (e.g., OpenTelemetry) later as more services are added to track requests across the system.
 - **Graceful Shutdown:** Ensure all services (API Gateway, State Service, Scheduler, Workers) handle OS signals correctly (like SIGTERM) to shut down cleanly, finishing in-progress work within a timeout and closing event bus connections. The current API gateway has a good example using `context` and `errgroup`.
 
-By following these next steps, we can incrementally build out the core functionality of the event-driven WriteHERE engine in Go.
+By following these next steps, focusing on the ReAct loop implementation in the `ExecutionWorker` and porting the `SearchAction`, we can achieve end-to-end execution capabilities for basic research-and-write tasks.

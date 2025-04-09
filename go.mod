@@ -21,6 +21,7 @@ require (
 	github.com/hashicorp/go-multierror v1.1.1 // indirect
 	github.com/lithammer/shortuuid/v3 v3.0.7 // indirect
 	github.com/oklog/ulid v1.3.1 // indirect
+	github.com/sashabaranov/go-openai v1.38.1 // indirect
 	github.com/sony/gobreaker v1.0.0 // indirect
 )
 

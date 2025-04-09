@@ -2,6 +2,7 @@ package state
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"writehere-go/pkg/events"
@@ -63,6 +64,11 @@ func (s *Service) subscribeToEvents(ctx context.Context) error {
 	// Handle SubtasksPlanned events
 	g.Go(func() error {
 		return s.eventBus.Subscribe(ctx, events.TaskTopic, events.SubtasksPlanned, s.handleSubtasksPlanned)
+	})
+
+	// Handle TaskStarted events
+	g.Go(func() error {
+		return s.eventBus.Subscribe(ctx, events.TaskTopic, events.TaskStarted, s.handleTaskStarted)
 	})
 
 	// Wait for all subscriptions to complete or error
@@ -264,6 +270,52 @@ func (s *Service) handleSubtasksPlanned(ctx context.Context, event events.Event)
 		}
 	}
 
+	return nil
+}
+
+// handleTaskStarted processes TaskStarted events
+func (s *Service) handleTaskStarted(ctx context.Context, event events.Event) error {
+	s.logger.Debug().
+		Str("event_id", event.EventID).
+		Msg("Handling TaskStarted event")
+
+	// Extract payload
+	payloadBytes, err := json.Marshal(event.Payload)
+	if err != nil {
+		return errors.Wrap(err, "failed to marshal TaskStarted payload map for decoding")
+	}
+	var payload events.TaskStartedPayload
+	if err := json.Unmarshal(payloadBytes, &payload); err != nil {
+		if p, ok := event.Payload.(events.TaskStartedPayload); ok {
+			payload = p
+		} else {
+			return errors.Wrap(err, "failed to unmarshal TaskStarted payload")
+		}
+	}
+
+	// Get the task from the store
+	task, err := s.store.GetTask(ctx, payload.TaskID)
+	if err != nil {
+		// It's possible the task was deleted between assignment and start, log warning
+		s.logger.Warn().Err(err).Str("task_id", payload.TaskID).Msg("Failed to get task for TaskStarted event")
+		return nil // Don't treat as a fatal error for the handler
+	}
+	if task == nil {
+		s.logger.Warn().Str("task_id", payload.TaskID).Msg("Task not found for TaskStarted event")
+		return nil
+	}
+
+	// Update task status to RUNNING
+	// TODO: Consider adding assigned_worker_id from payload to task here?
+	task.Status = TaskStatusRunning
+	task.AssignedWorkerID = payload.WorkerID // Store worker ID if provided
+
+	// Save the updated task
+	if err := s.store.UpdateTask(ctx, task); err != nil {
+		return errors.Wrap(err, "failed to update task status to RUNNING")
+	}
+
+	s.logger.Info().Str("task_id", task.TaskID).Str("worker_id", task.AssignedWorkerID).Msg("Task status updated to RUNNING")
 	return nil
 }
 

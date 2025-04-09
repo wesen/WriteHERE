@@ -11,6 +11,7 @@ type TaskStatus string
 
 // Possible task statuses
 const (
+	TaskStatusUnknown      TaskStatus = "UNKNOWN"
 	TaskStatusPendingDeps  TaskStatus = "PENDING_DEPS"
 	TaskStatusReady        TaskStatus = "READY"
 	TaskStatusAssigned     TaskStatus = "ASSIGNED"

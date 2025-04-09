@@ -74,6 +74,20 @@ func (s *Service) handleTaskAssigned(ctx context.Context, event events.Event) er
 
 	log.Info().Str("task_id", assignedPayload.TaskID).Str("worker_type", assignedPayload.WorkerType).Msg("Execution Worker received assigned task")
 
+	// --- Publish TaskStarted Event ---
+	startedPayload := events.TaskStartedPayload{
+		TaskID:     assignedPayload.TaskID,
+		RootTaskID: assignedPayload.RootTaskID,
+		WorkerID:   WorkerType, // Use WorkerType as a simple ID for now
+	}
+	startedEvent := events.NewEvent(events.TaskStarted, WorkerType, startedPayload)
+	if err := s.eventBus.Publish(ctx, events.TaskTopic, startedEvent); err != nil {
+		// Log error but proceed
+		log.Error().Err(err).Str("task_id", assignedPayload.TaskID).Msg("Failed to publish TaskStarted event")
+	} else {
+		log.Info().Str("task_id", assignedPayload.TaskID).Msg("Published TaskStarted event")
+	}
+
 	// Fetch the full task details
 	task, err := s.store.GetTask(ctx, assignedPayload.TaskID)
 	if err != nil {
