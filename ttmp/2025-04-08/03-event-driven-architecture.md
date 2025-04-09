@@ -433,11 +433,9 @@ For a team porting this system to Go, consider the following phased approach:
    - Create the State Service and basic StateStore
    - Build the API Gateway for submitting root tasks
 
-2. **Phase 2: Worker Framework**
+2. **Phase 2: Scheduler Framework**
 
-   - Implement the base Worker interface
    - Create the Scheduler service
-   - Build the LLM with basic functionality
 
 3. **Phase 3: Action System**
 
