@@ -96,7 +96,7 @@ func run(cmd *cobra.Command, args []string) error {
 
 	// Initialize Worker Services
 	planningWorker := planning.NewService(eventBus, store, llmClient)
-	executionWorker := execution.NewService(eventBus, store)
+	executionWorker := execution.NewService(eventBus, store, llmClient)
 
 	// Create HTTP server
 	router := http.NewServeMux()

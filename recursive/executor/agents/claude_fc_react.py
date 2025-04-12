@@ -373,9 +373,9 @@ if __name__ == "__main__":
     agent = DummyRandomPlanningAgent()
     
 
-    to_run_root_question = "20年前中美两国财富前三的富豪身价分别是多少，现在中美两国财富前三的富豪的身价分别是多少，在两个年份，中美两国身价的平均差多少"
-    to_run_target_write_tasks = "20年前中美两国财富前三的富豪身价分别是多少，现在中美两国财富前三的富豪的身价分别是多少，在两个年份，中美两国身价的平均差多少"
-    to_run_outer_write_task = "20年前中美两国财富前三的富豪身价分别是多少，现在中美两国财富前三的富豪的身价分别是多少，在两个年份，中美两国身价的平均差多少"
+    to_run_root_question = "What were the net worths of the top three richest people in China and the US 20 years ago, what are their net worths now, and what is the average difference in net worth between China and the US in both years?"
+    to_run_target_write_tasks = "What were the net worths of the top three richest people in China and the US 20 years ago, what are their net worths now, and what is the average difference in net worth between China and the US in both years?"
+    to_run_outer_write_task = "What were the net worths of the top three richest people in China and the US 20 years ago, what are their net worths now, and what is the average difference in net worth between China and the US in both years?"
     
     
     

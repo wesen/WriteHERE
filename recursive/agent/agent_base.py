@@ -1,4 +1,4 @@
-#coding:utf8
+# coding:utf8
 
 from typing import Dict, List
 from abc import ABC, abstractmethod
@@ -14,26 +14,39 @@ from recursive.utils.file_io import parse_hierarchy_tags_result
 from copy import deepcopy
 from pprint import pprint
 from loguru import logger
+from datetime import datetime
+import os
+import yaml
 
 
-agent_register = Register('agent_register')
-    
+agent_register = Register("agent_register")
+
+
 class Agent(ABC):
     def __init__(self, *args, **kwargs):
         self.kwargs = kwargs
         self.args = args
- 
+        # Create debug/logs/llm directory if it doesn't exist
+        os.makedirs("debug/logs/llm", exist_ok=True)
+
     @abstractmethod
     def forward(self, node, memory, *args, **kwargs):
         raise NotImplementedError()
-    
+
     @abstractmethod
     def parse_result(self, agent_output, *args, **kwargs):
         raise NotImplementedError()
 
-    def call_llm(self, system_message, prompt, parse_arg_dict, history_message = None, **other_inner_args):
+    def call_llm(
+        self,
+        system_message,
+        prompt,
+        parse_arg_dict,
+        history_message=None,
+        **other_inner_args,
+    ):
         llm = OpenAIApiProxy()
-        
+
         if system_message.strip() == "":
             message = []
         else:
@@ -44,28 +57,42 @@ class Agent(ABC):
             message.append(history_message)
         message.append({"role": "user", "content": prompt})
         logger.info(message[-1]["content"])
-        
+
         model = other_inner_args.pop("model", "gpt-4o")
-        
-        resp = llm.call(messages = message,
-                        model=model,
-                        **other_inner_args)[0]
+
+        # Log the request before making the call
+        timestamp = datetime.now().strftime("%Y-%m-%d--%H-%M-%S-%f")
+        agent_name = self.__class__.__name__
+        log_file = f"debug/logs/llm/{timestamp}--{agent_name}.yaml"
+
+        log_data = {
+            "timestamp": timestamp,
+            "agent": agent_name,
+            "model": model,
+            "messages": message,
+            "other_args": other_inner_args,
+        }
+
+        resp = llm.call(messages=message, model=model, **other_inner_args)[0]
         if "r1" in model:
             reason = resp["message"]["reasoning_content"]
         else:
             reason = ""
         content = resp["message"]["content"]
-        logger.info("Get REASONING: {}\n\nResult: {}".format(
-            reason, content
-        ))
+        logger.info("Get REASONING: {}\n\nResult: {}".format(reason, content))
+
+        # Update log data with response
+        log_data.update(
+            {"response": {"content": content, "reason": reason, "raw_response": resp}}
+        )
+
+        # Write log to file
+        with open(log_file, "w") as f:
+            yaml.safe_dump(log_data, f, default_flow_style=False, allow_unicode=True)
 
         assert isinstance(parse_arg_dict, dict)
-        result = {
-            "original": content,
-            "result": content,
-            "reason": reason
-        }
-        
+        result = {"original": content, "result": content, "reason": reason}
+
         """  
         The following code extracts structured information from an LLM's textual response by looking for content within specific XML-like tags. It works by:
 
@@ -79,9 +106,7 @@ class Agent(ABC):
         for key, value in parse_arg_dict.items():
             result[key] = parse_hierarchy_tags_result(content, value).strip()
         return result
-                    
-        
-        
+
 
 @agent_register.register_module()
 class DummyRandomPlanningAgent(Agent):
@@ -90,14 +115,10 @@ class DummyRandomPlanningAgent(Agent):
         # layer_cnt = random.randint(1, 3)
         layer = node.node_graph_info["layer"]
         if layer == 2:
-            result = {
-                "original": "",
-                "result": [],
-                "thought": ""
-            }
+            result = {"original": "", "result": [], "thought": ""}
             return result
-            
-        # layer_cnt = random.randint(1, 2) 
+
+        # layer_cnt = random.randint(1, 2)
         layer_cnt = 3 if layer == 1 else 1
         plans = []
         current = []
@@ -113,51 +134,32 @@ class DummyRandomPlanningAgent(Agent):
                     dependency = []
                 else:
                     dependency = random.sample(parent, random.randint(1, len(parent)))
-                    dependency = sorted([node["id"]  for node in dependency])
-                task = {
-                    "goal": "random_dummy",
-                    "id": cnt,
-                    "dependency": dependency
-                }
+                    dependency = sorted([node["id"] for node in dependency])
+                task = {"goal": "random_dummy", "id": cnt, "dependency": dependency}
                 cnt += 1
                 current.append(task)
             plans.extend(current)
-        
-        result = {
-            "original": "",
-            "result": plans,
-            "thought": ""
-        }
+
+        result = {"original": "", "result": plans, "thought": ""}
         return result
 
     @overrides
     def parse_result(self, agent_output, *args, **kwargs) -> Dict:
         return agent_output
-      
+
+
 @agent_register.register_module()
 class SinglePlanningAgent(Agent):
     @overrides
     def forward(self, node, memory, *args, **kwargs) -> str:
         layer = node.node_graph_info["layer"]
         if layer == 1:
-            result = {
-                "original": "",
-                "result": [],
-                "thought": ""
-            }
+            result = {"original": "", "result": [], "thought": ""}
             return result
-        
-        plans = [{
-            "id": 0,
-            "dependency": [],
-            "goal": node.task_info["goal"]
-        }]
-        
-        result = {
-            "original": "",
-            "result": plans,
-            "thought": ""
-        }
+
+        plans = [{"id": 0, "dependency": [], "goal": node.task_info["goal"]}]
+
+        result = {"original": "", "result": plans, "thought": ""}
         return result
 
     @overrides
@@ -165,8 +167,7 @@ class SinglePlanningAgent(Agent):
         return agent_output
 
 
-
-@agent_register.register_module()           
+@agent_register.register_module()
 class DummyRandomExecutorAgent(Agent):
     @overrides
     def forward(self, node, memory, *args, **kwargs) -> str:
@@ -174,7 +175,7 @@ class DummyRandomExecutorAgent(Agent):
             "original": "",
             "process": [],
             "thought": "",
-            "result": "Random Fake Result"
+            "result": "Random Fake Result",
         }
         return result
 
@@ -183,7 +184,7 @@ class DummyRandomExecutorAgent(Agent):
         return agent_output
 
 
-@agent_register.register_module() 
+@agent_register.register_module()
 class DummyRandomUpdateAgent(Agent):
     @overrides
     def forward(self, node, memory, *args, **kwargs) -> str:
@@ -192,7 +193,8 @@ class DummyRandomUpdateAgent(Agent):
     @overrides
     def parse_result(self, agent_output, *args, **kwargs) -> Dict:
         return json.loads(agent_output)
-    
+
+
 @agent_register.register_module()
 class DummyRandomPriorReflectionAgent(Agent):
     @overrides
@@ -202,8 +204,9 @@ class DummyRandomPriorReflectionAgent(Agent):
     @overrides
     def parse_result(self, agent_output, *args, **kwargs) -> Dict:
         return json.loads(agent_output)
-   
-@agent_register.register_module()     
+
+
+@agent_register.register_module()
 class DummyRandomPlanningPostReflectionAgent(Agent):
     @overrides
     def forward(self, node, memory, *args, **kwargs) -> str:
@@ -212,8 +215,9 @@ class DummyRandomPlanningPostReflectionAgent(Agent):
     @overrides
     def parse_result(self, agent_output, *args, **kwargs) -> Dict:
         return json.loads(agent_output)
-    
-@agent_register.register_module()     
+
+
+@agent_register.register_module()
 class DummyRandomExecutorPostReflectionAgent(Agent):
     @overrides
     def forward(self, node, memory, *args, **kwargs) -> str:
@@ -221,7 +225,7 @@ class DummyRandomExecutorPostReflectionAgent(Agent):
             "thought": "",
             "original": "",
             "status": "success",
-            "result": node.raw_plan
+            "result": node.raw_plan,
         }
         return result
 
@@ -229,7 +233,8 @@ class DummyRandomExecutorPostReflectionAgent(Agent):
     def parse_result(self, agent_output, *args, **kwargs) -> Dict:
         return json.loads(agent_output)
 
-@agent_register.register_module()  
+
+@agent_register.register_module()
 class DummyRandomFinalAggregateAgent(Agent):
     @overrides
     def forward(self, node, memory, *args, **kwargs) -> str:
@@ -237,7 +242,7 @@ class DummyRandomFinalAggregateAgent(Agent):
             "thought": "",
             "original": "",
             "status": "success",
-            "result": node.topological_task_queue[-1].get_node_final_result()
+            "result": node.topological_task_queue[-1].get_node_final_result(),
         }
         return result
 
@@ -246,10 +251,9 @@ class DummyRandomFinalAggregateAgent(Agent):
         return json.loads(agent_output)
 
 
-
-
 if __name__ == "__main__":
     agent = DummyRandomExecutorAgent("", "")
     output = agent.forward({}, {}, {}, {}, {})
     from pprint import pprint
+
     pprint(agent.parse_result(output))
