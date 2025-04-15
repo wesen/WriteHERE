@@ -5,6 +5,7 @@ from datetime import datetime
 
 now = datetime.now()
 
+
 @prompt_register.register_module()
 class StoryWrtingNLReasonerEN(PromptTemplate):
     def __init__(self) -> None:
@@ -54,14 +55,13 @@ Please complete the story design task **{to_run_task}** in a reasonable and inno
 """.strip()
         super().__init__(system_message, content_template)
 
- 
+
 @prompt_register.register_module()
 class StoryWritingReasonerFinalAggregate(PromptTemplate):
     def __init__(self) -> None:
         system_message = ""
 
-
-# , **providing details which are useful for writing, do not provide too much un-useful details**.
+        # , **providing details which are useful for writing, do not provide too much un-useful details**.
 
         content_template = """
 The collaborative story-writing requirement to be completed: **{to_run_root_question}**

@@ -14,8 +14,7 @@ class BaseAgent:
             the llm.
     """
 
-    def __init__(self, llm, action_executor: ActionExecutor,
-                 protocol: object) -> None:
+    def __init__(self, llm, action_executor: ActionExecutor, protocol: object) -> None:
         self._llm = llm
         self._action_executor = action_executor
         self._protocol = protocol

@@ -7,10 +7,19 @@ from .builtin_actions import FinishAction, InvalidAction, NoAction
 from .parser import BaseParser, JsonParser, TupleParser
 
 __all__ = [
-    'BaseAction', 'ActionExecutor', 'InvalidAction', 'FinishAction',
-    'NoAction', 'BaseParser',
-    'JsonParser', 'TupleParser', 'tool_api', 'list_tools', 'get_tool_cls',
-    'get_tool', 'BingBrowser'
+    "BaseAction",
+    "ActionExecutor",
+    "InvalidAction",
+    "FinishAction",
+    "NoAction",
+    "BaseParser",
+    "JsonParser",
+    "TupleParser",
+    "tool_api",
+    "list_tools",
+    "get_tool_cls",
+    "get_tool",
+    "BingBrowser",
 ]
 
 
@@ -24,8 +33,7 @@ def list_tools(with_class: bool = False):
     Returns:
         list: all action names
     """
-    return list(TOOL_REGISTRY.items()) if with_class else list(
-        TOOL_REGISTRY.keys())
+    return list(TOOL_REGISTRY.items()) if with_class else list(TOOL_REGISTRY.keys())
 
 
 def get_tool_cls(specifier: str) -> Type[BaseAction]:

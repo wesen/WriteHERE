@@ -24,15 +24,19 @@ except ImportError:
 
 from ..schema import ActionReturn, ActionStatusCode
 from .parser import BaseParser, JsonParser, ParseError
-logging.getLogger('griffe').setLevel(logging.ERROR)
 
-TOOL_REGISTRY = ClassRegistry('__tool_name__', unique=True)
+logging.getLogger("griffe").setLevel(logging.ERROR)
 
-def tool_api(func: Optional[Callable] = None,
-             *,
-             explode_return: bool = False,
-             returns_named_value: bool = False,
-             **kwargs):
+TOOL_REGISTRY = ClassRegistry("__tool_name__", unique=True)
+
+
+def tool_api(
+    func: Optional[Callable] = None,
+    *,
+    explode_return: bool = False,
+    returns_named_value: bool = False,
+    **kwargs,
+):
     """Turn functions into tools. It will parse typehints as well as docstrings
     to build the tool description and attach it to functions via an attribute
     ``api_description``.
@@ -95,48 +99,52 @@ def tool_api(func: Optional[Callable] = None,
         when ``explode_return`` or ``returns_named_value`` is enabled.
     """
 
-    def _detect_type(string):        
-        field_type = 'STRING'
-        if 'list' in string:
-            field_type = 'array'
-        elif 'str' not in string:
-            if 'float' in string:
-                field_type = 'FLOAT'
-            elif 'int' in string:
-                field_type = 'NUMBER'
-            elif 'bool' in string:
-                field_type = 'BOOLEAN'
+    def _detect_type(string):
+        field_type = "STRING"
+        if "list" in string:
+            field_type = "array"
+        elif "str" not in string:
+            if "float" in string:
+                field_type = "FLOAT"
+            elif "int" in string:
+                field_type = "NUMBER"
+            elif "bool" in string:
+                field_type = "BOOLEAN"
         return field_type
 
     def _explode(desc):
         kvs = []
-        desc = '\nArgs:\n' + '\n'.join([
-            '    ' + item.lstrip(' -+*#.')
-            for item in desc.split('\n')[1:] if item.strip()
-        ])
-        docs = Docstring(desc).parse('google')
+        desc = "\nArgs:\n" + "\n".join(
+            [
+                "    " + item.lstrip(" -+*#.")
+                for item in desc.split("\n")[1:]
+                if item.strip()
+            ]
+        )
+        docs = Docstring(desc).parse("google")
         if not docs:
             return kvs
         if docs[0].kind is DocstringSectionKind.parameters:
             for d in docs[0].value:
                 d = d.as_dict()
-                if not d['annotation']:
-                    d.pop('annotation')
+                if not d["annotation"]:
+                    d.pop("annotation")
                 else:
-                    d['type'] = _detect_type(d['annotation'].lower())
+                    d["type"] = _detect_type(d["annotation"].lower())
                 kvs.append(d)
         return kvs
 
     def _parse_tool(function):
         # remove rst syntax
-        docs = Docstring(
-            re.sub(':(.+?):`(.+?)`', '\\2', function.__doc__ or '')).parse(
-                'google', returns_named_value=returns_named_value, **kwargs)
+        docs = Docstring(re.sub(":(.+?):`(.+?)`", "\\2", function.__doc__ or "")).parse(
+            "google", returns_named_value=returns_named_value, **kwargs
+        )
 
         desc = dict(
             name=function.__name__,
-            description=docs[0].value
-            if docs[0].kind is DocstringSectionKind.text else '',
+            description=(
+                docs[0].value if docs[0].kind is DocstringSectionKind.text else ""
+            ),
             parameters=[],
             required=[],
         )
@@ -145,41 +153,43 @@ def tool_api(func: Optional[Callable] = None,
             if doc.kind is DocstringSectionKind.parameters:
                 for d in doc.value:
                     d = d.as_dict()
-                    d['type'] = _detect_type(d["annotation"].lower())
-                    args_doc[d['name']] = d
+                    d["type"] = _detect_type(d["annotation"].lower())
+                    args_doc[d["name"]] = d
             if doc.kind is DocstringSectionKind.returns:
                 for d in doc.value:
                     d = d.as_dict()
                     from pprint import pprint
-                    if not d['name']:
-                        d.pop('name')
-                    if not d['annotation']:
-                        d.pop('annotation')
+
+                    if not d["name"]:
+                        d.pop("name")
+                    if not d["annotation"]:
+                        d.pop("annotation")
                     else:
-                        d['type'] = _detect_type(d['annotation'].lower())
+                        d["type"] = _detect_type(d["annotation"].lower())
                     returns_doc.append(d)
 
         sig = inspect.signature(function)
         for name, param in sig.parameters.items():
-            if name == 'self':
+            if name == "self":
                 continue
             parameter = dict(
                 name=param.name,
                 type=args_doc[param.name]["type"],
                 annotation=args_doc[param.name].get("annotation", ""),
-                description=args_doc[param.name]["description"])
-            desc['parameters'].append(parameter)
+                description=args_doc[param.name]["description"],
+            )
+            desc["parameters"].append(parameter)
             if param.default is inspect.Signature.empty:
                 parameter["required"] = True
-                desc['required'].append(param.name)
+                desc["required"].append(param.name)
 
         return_data = []
         if explode_return:
-            return_data = _explode(returns_doc[0]['description'])
+            return_data = _explode(returns_doc[0]["description"])
         elif returns_named_value:
             return_data = returns_doc
         if return_data:
-            desc['return_data'] = return_data
+            desc["return_data"] = return_data
 
         return desc
 
@@ -209,41 +219,42 @@ class ToolMeta(ABCMeta):
 
     def __new__(mcs, name, base, attrs):
         is_toolkit, tool_desc = True, dict(
-            name=attrs.setdefault('__tool_name__', name),
-            description=Docstring(attrs.get('__doc__',
-                                            '')).parse('google')[0].value)
+            name=attrs.setdefault("__tool_name__", name),
+            description=Docstring(attrs.get("__doc__", "")).parse("google")[0].value,
+        )
         for key, value in attrs.items():
-            if callable(value) and hasattr(value, 'api_description'):
-                api_desc = getattr(value, 'api_description')
-                if key == 'run':
-                    tool_desc['parameters'] = api_desc['parameters']
-                    tool_desc['required'] = api_desc['required']
-                    if api_desc['description']:
-                        tool_desc['description'] = api_desc['description']
-                    if api_desc.get('return_data'):
-                        tool_desc['return_data'] = api_desc['return_data']
+            if callable(value) and hasattr(value, "api_description"):
+                api_desc = getattr(value, "api_description")
+                if key == "run":
+                    tool_desc["parameters"] = api_desc["parameters"]
+                    tool_desc["required"] = api_desc["required"]
+                    if api_desc["description"]:
+                        tool_desc["description"] = api_desc["description"]
+                    if api_desc.get("return_data"):
+                        tool_desc["return_data"] = api_desc["return_data"]
                     is_toolkit = False
                 else:
-                    tool_desc.setdefault('api_list', []).append(api_desc)
-        if not is_toolkit and 'api_list' in tool_desc:
-            raise KeyError('`run` and other tool APIs can not be implemented '
-                           'at the same time')
-        if is_toolkit and 'api_list' not in tool_desc:
+                    tool_desc.setdefault("api_list", []).append(api_desc)
+        if not is_toolkit and "api_list" in tool_desc:
+            raise KeyError(
+                "`run` and other tool APIs can not be implemented " "at the same time"
+            )
+        if is_toolkit and "api_list" not in tool_desc:
             is_toolkit = False
-            if callable(attrs.get('run')):
-                run_api = tool_api(attrs['run'])
+            if callable(attrs.get("run")):
+                run_api = tool_api(attrs["run"])
                 api_desc = run_api.api_description
-                tool_desc['parameters'] = api_desc['parameters']
-                tool_desc['required'] = api_desc['required']
-                if api_desc['description']:
-                    tool_desc['description'] = api_desc['description']
-                if api_desc.get('return_data'):
-                    tool_desc['return_data'] = api_desc['return_data']
-                attrs['run'] = run_api
+                tool_desc["parameters"] = api_desc["parameters"]
+                tool_desc["required"] = api_desc["required"]
+                if api_desc["description"]:
+                    tool_desc["description"] = api_desc["description"]
+                if api_desc.get("return_data"):
+                    tool_desc["return_data"] = api_desc["return_data"]
+                attrs["run"] = run_api
             else:
-                tool_desc['parameters'], tool_desc['required'] = [], []
-        attrs['_is_toolkit'] = is_toolkit
-        attrs['__tool_description__'] = tool_desc
+                tool_desc["parameters"], tool_desc["required"] = [], []
+        attrs["_is_toolkit"] = is_toolkit
+        attrs["__tool_description__"] = tool_desc
         return super().__new__(mcs, name, base, attrs)
 
 
@@ -315,23 +326,26 @@ class BaseAction(metaclass=AutoRegister(TOOL_REGISTRY, ToolMeta)):
             action = Calculator()
     """
 
-    def __init__(self,
-                 description: Optional[dict] = None,
-                 parser: Type[BaseParser] = JsonParser,
-                 enable: bool = True):
+    def __init__(
+        self,
+        description: Optional[dict] = None,
+        parser: Type[BaseParser] = JsonParser,
+        enable: bool = True,
+    ):
         self._description = deepcopy(description or self.__tool_description__)
-        self._name = self._description['name']
+        self._name = self._description["name"]
         self._parser = parser(self)
         self._enable = enable
 
-    def __call__(self, inputs: str, name='run') -> ActionReturn:
-        fallback_args = {'inputs': inputs, 'name': name}
+    def __call__(self, inputs: str, name="run") -> ActionReturn:
+        fallback_args = {"inputs": inputs, "name": name}
         if not hasattr(self, name):
             return ActionReturn(
                 fallback_args,
                 type=self.name,
-                errmsg=f'invalid API: {name}',
-                state=ActionStatusCode.API_ERROR)
+                errmsg=f"invalid API: {name}",
+                state=ActionStatusCode.API_ERROR,
+            )
         try:
             inputs = self._parser.parse_inputs(inputs, name)
         except ParseError as exc:
@@ -339,7 +353,8 @@ class BaseAction(metaclass=AutoRegister(TOOL_REGISTRY, ToolMeta)):
                 fallback_args,
                 type=self.name,
                 errmsg=exc.err_msg,
-                state=ActionStatusCode.ARGS_ERROR)
+                state=ActionStatusCode.ARGS_ERROR,
+            )
         try:
             outputs = getattr(self, name)(**inputs)
         except Exception as exc:
@@ -347,7 +362,8 @@ class BaseAction(metaclass=AutoRegister(TOOL_REGISTRY, ToolMeta)):
                 inputs,
                 type=self.name,
                 errmsg=str(exc),
-                state=ActionStatusCode.API_ERROR)
+                state=ActionStatusCode.API_ERROR,
+            )
         if isinstance(outputs, ActionReturn):
             action_return = outputs
             if not action_return.args:
@@ -381,6 +397,6 @@ class BaseAction(metaclass=AutoRegister(TOOL_REGISTRY, ToolMeta)):
         return self._description
 
     def __repr__(self):
-        return f'{self.description}'
+        return f"{self.description}"
 
     __str__ = __repr__

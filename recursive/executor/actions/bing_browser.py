@@ -22,7 +22,7 @@ from loguru import logger
 from charset_normalizer import detect
 from dotenv import load_dotenv
 
-load_dotenv(dotenv_path='api_key.env')
+load_dotenv(dotenv_path="api_key.env")
 
 
 class WebPageHelper:
@@ -53,7 +53,7 @@ class WebPageHelper:
                 "Connection": "keep-alive",
                 "Sec-Fetch-Dest": "document",
                 "Sec-Fetch-Mode": "navigate",
-                "Sec-Fetch-Site": "cross-site"
+                "Sec-Fetch-Site": "cross-site",
             },
             {
                 "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:124.0) Gecko/20100101 Firefox/124.0",
@@ -64,7 +64,7 @@ class WebPageHelper:
                 "Connection": "keep-alive",
                 "Sec-Fetch-Dest": "document",
                 "Sec-Fetch-Mode": "navigate",
-                "Sec-Fetch-Site": "same-origin"
+                "Sec-Fetch-Site": "same-origin",
             },
             {
                 "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.3 Mobile/15E148 Safari/604.1",
@@ -75,7 +75,7 @@ class WebPageHelper:
                 "Connection": "keep-alive",
                 "Sec-Fetch-Dest": "document",
                 "Sec-Fetch-Mode": "navigate",
-                "Sec-Fetch-Site": "none"
+                "Sec-Fetch-Site": "none",
             },
             {
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36 Edg/123.0.0.0",
@@ -86,7 +86,7 @@ class WebPageHelper:
                 "Connection": "keep-alive",
                 "Sec-Fetch-Dest": "document",
                 "Sec-Fetch-Mode": "navigate",
-                "Sec-Fetch-Site": "same-site"
+                "Sec-Fetch-Site": "same-site",
             },
             {
                 "User-Agent": "Mozilla/5.0 (Linux; Android 14; SM-G991B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Mobile Safari/537.36",
@@ -97,7 +97,7 @@ class WebPageHelper:
                 "Connection": "keep-alive",
                 "Sec-Fetch-Dest": "document",
                 "Sec-Fetch-Mode": "navigate",
-                "Sec-Fetch-Site": "same-origin"
+                "Sec-Fetch-Site": "same-origin",
             },
             {
                 "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:124.0) Gecko/20100101 Firefox/124.0",
@@ -108,7 +108,7 @@ class WebPageHelper:
                 "Connection": "keep-alive",
                 "Sec-Fetch-Dest": "document",
                 "Sec-Fetch-Mode": "navigate",
-                "Sec-Fetch-Site": "cross-site"
+                "Sec-Fetch-Site": "cross-site",
             },
             {
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36 OPR/85.0.4341.18",
@@ -119,7 +119,7 @@ class WebPageHelper:
                 "Connection": "keep-alive",
                 "Sec-Fetch-Dest": "document",
                 "Sec-Fetch-Mode": "navigate",
-                "Sec-Fetch-Site": "same-origin"
+                "Sec-Fetch-Site": "same-origin",
             },
             {
                 "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
@@ -130,7 +130,7 @@ class WebPageHelper:
                 "Connection": "keep-alive",
                 "Sec-Fetch-Dest": "document",
                 "Sec-Fetch-Mode": "navigate",
-                "Sec-Fetch-Site": "same-site"
+                "Sec-Fetch-Site": "same-site",
             },
             {
                 "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.3 Safari/605.1.15",
@@ -141,7 +141,7 @@ class WebPageHelper:
                 "Connection": "keep-alive",
                 "Sec-Fetch-Dest": "document",
                 "Sec-Fetch-Mode": "navigate",
-                "Sec-Fetch-Site": "cross-site"
+                "Sec-Fetch-Site": "cross-site",
             },
             {
                 "User-Agent": "Mozilla/5.0 (Linux; Android 14; SM-A536U) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Mobile Safari/537.36 EdgA/122.0.2365.47",
@@ -152,11 +152,10 @@ class WebPageHelper:
                 "Connection": "keep-alive",
                 "Sec-Fetch-Dest": "document",
                 "Sec-Fetch-Mode": "navigate",
-                "Sec-Fetch-Site": "same-origin"
-            }
+                "Sec-Fetch-Site": "same-origin",
+            },
         ]
-    
-        
+
         # self.httpx_client = httpx.Client(verify=False, headers=headers, follow_redirects=True)
         self.min_char_count = min_char_count
         self.max_thread_num = max_thread_num
@@ -175,7 +174,7 @@ class WebPageHelper:
                 "\uff0c",  # Fullwidth comma
                 "\u3001",  # Ideographic comma
                 " ",
-                "\u200B",  # Zero-width space
+                "\u200b",  # Zero-width space
                 "",
             ],
         )
@@ -188,29 +187,33 @@ class WebPageHelper:
         call_args_dict = {
             "url": url,
         }
-        
+
         if web_page_cache is not None and not overwrite_cache:
             cache_result = web_page_cache.get_cache(
-                name = cache_name,
-                call_args_dict = call_args_dict
+                name=cache_name, call_args_dict=call_args_dict
             )
             if cache_result is not None:
                 return cache_result["result"]
-            
+
         try:
             import random
-            with httpx.Client(verify=False, headers=random.choice(self.header_pools), follow_redirects=True) as client:
+
+            with httpx.Client(
+                verify=False,
+                headers=random.choice(self.header_pools),
+                follow_redirects=True,
+            ) as client:
                 res = client.get(url, timeout=4)
             if res.status_code >= 400:
                 res.raise_for_status()
-            encoding = detect(res.content)['encoding']
+            encoding = detect(res.content)["encoding"]
             res.encoding = encoding
             # save cache
             if web_page_cache is not None:
                 web_page_cache.save_cache(
-                    name = cache_name,
-                    call_args_dict = call_args_dict,
-                    value = {"result": res.text}
+                    name=cache_name,
+                    call_args_dict=call_args_dict,
+                    value={"result": res.text},
                 )
             return res.text
         except httpx.HTTPError as exc:
@@ -245,8 +248,9 @@ class WebPageHelper:
         for u in articles:
             # articles[u]["snippets"] = self.text_splitter.split_text(articles[u]["text"])
             articles[u]["snippets"] = articles[u]["text"]
-            
+
         return articles
+
 
 class BaseSearch:
     def __init__(self, topk: int = 3, black_list: List[str] = None):
@@ -257,12 +261,13 @@ class BaseSearch:
         filtered_results = {}
         count = 0
         for url, snippet, title in results:
-            if all(domain not in url
-                   for domain in self.black_list) and not url.endswith('.pdf'):
+            if all(
+                domain not in url for domain in self.black_list
+            ) and not url.endswith(".pdf"):
                 filtered_results[count] = {
-                    'url': url,
-                    'summ': json.dumps(snippet, ensure_ascii=False)[1:-1],
-                    'title': title
+                    "url": url,
+                    "summ": json.dumps(snippet, ensure_ascii=False)[1:-1],
+                    "title": title,
                 }
                 count += 1
                 if count >= self.topk:
@@ -274,36 +279,44 @@ class BaseSearch:
         count = 0
         for item in results:
             url = item["url"]
-            if all(domain not in url
-                   for domain in self.black_list) and not url.endswith('.pdf'):
+            if all(
+                domain not in url for domain in self.black_list
+            ) and not url.endswith(".pdf"):
                 filtered_results[count] = item
                 count += 1
         return filtered_results
 
+
 class SerpApiSearch(BaseSearch):
 
-    def __init__(self,
-                 serp_api_key=None,
-                 topk = 20,
-                 is_valid_source = None,
-                 min_char_count = 150,
-                 snippet_chunk_size = 1000,
-                 webpage_helper_max_threads = 10,
-                 backend_engine = "bing", # default search engine, was google before
-                 cc = "US", # default search region
-                 **kwargs,):
+    def __init__(
+        self,
+        serp_api_key=None,
+        topk=20,
+        is_valid_source=None,
+        min_char_count=150,
+        snippet_chunk_size=1000,
+        webpage_helper_max_threads=10,
+        backend_engine="bing",  # default search engine, was google before
+        cc="US",  # default search region
+        **kwargs,
+    ):
         black_list = []
-        self.serp_api_key = str(os.getenv('SERPAPI'))
-        
+        self.serp_api_key = str(os.getenv("SERPAPI"))
+
         self.endpoint = "https://serpapi.com/search"
         if backend_engine == "bing":
             logger.info("USE BING")
             self.params = {"engine": backend_engine, "count": topk, "cc": cc, **kwargs}
         elif backend_engine == "google":
             logger.info("USE GOOGLE")
-            self.params = {"engine": backend_engine, "count": topk, "gl": cc.lower(), **kwargs}
-            
-            
+            self.params = {
+                "engine": backend_engine,
+                "count": topk,
+                "gl": cc.lower(),
+                **kwargs,
+            }
+
         self.webpage_helper = WebPageHelper(
             min_char_count=min_char_count,
             snippet_chunk_size=snippet_chunk_size,
@@ -313,80 +326,81 @@ class SerpApiSearch(BaseSearch):
 
         # If not None, is_valid_source shall be a function that takes a URL and returns a boolean.
         self.is_valid_source = is_valid_source if is_valid_source else lambda x: True
-        
+
         super().__init__(topk, black_list)
-        
+
     def get_usage_and_reset(self):
         usage = self.usage
         self.usage = 0
         return {"SerpApiSearch": usage}
-    
+
     def search(self, query, exclude_urls: List[str] = [], overwrite_cache=False):
         search_cache = caches["search"]
         cache_name = "SerpApiSearch"
         call_args_dict = {
             "query": query,
             "params": self.params,
-            "exclude_urls": exclude_urls
+            "exclude_urls": exclude_urls,
         }
         print("overwrite_cache", overwrite_cache)
-        
+
         url_to_results = {}
         if search_cache is not None and not overwrite_cache:
             cache_result = search_cache.get_cache(
-                name = cache_name,
-                call_args_dict = call_args_dict
+                name=cache_name, call_args_dict=call_args_dict
             )
             if cache_result is not None:
                 url_to_results = cache_result
-                
-        
+
         # No Cache, True Call
         if len(url_to_results) == 0:
             queries = [query]
             self.usage += len(queries)
             headers = {"Content-Type": "application/json"}
-        
+
             for query in queries:
                 try:
                     params = {**self.params, "q": query, "api_key": self.serp_api_key}
-                    results = requests.get(self.endpoint, headers=headers, params=params).json()
-                    
+                    results = requests.get(
+                        self.endpoint, headers=headers, params=params
+                    ).json()
+
                     if "organic_results" in results:
                         for d in results["organic_results"]:
-                            if "link" in d and self.is_valid_source(d["link"]) and d["link"] not in exclude_urls:
+                            if (
+                                "link" in d
+                                and self.is_valid_source(d["link"])
+                                and d["link"] not in exclude_urls
+                            ):
                                 url_to_results[d["link"]] = {
                                     "url": d["link"],
                                     "title": d.get("title", ""),
                                     "description": d.get("snippet", ""),
                                     "position": d.get("position", 100),
-                                    "publish_time": "Not Provided"
+                                    "publish_time": "Not Provided",
                                 }
                 except Exception as e:
                     logging.error(f"Error occurs when searching query {query}: {e}")
             # Save Cache
             if search_cache is not None:
                 search_cache.save_cache(
-                    name = cache_name,
-                    call_args_dict = call_args_dict,
-                    value = url_to_results
+                    name=cache_name, call_args_dict=call_args_dict, value=url_to_results
                 )
         results = sorted(list(url_to_results.values()), key=lambda x: x["position"])
         pos2results = {}
         for idx, page in enumerate(results, start=1):
             page["position"] = idx
-            pos2results[idx-1] = page
+            pos2results[idx - 1] = page
         return pos2results
-    
-    def fetch_content(
-        self, pages
-    ):
+
+    def fetch_content(self, pages):
         urls = [page["url"] for page in pages]
         valid_url_to_snippets = self.webpage_helper.urls_to_snippets(urls)
         fetched_pages = []
         for page in pages:
             url = page["url"]
-            if url not in valid_url_to_snippets: continue
+            if url not in valid_url_to_snippets:
+                continue
             page["snippet"] = page["description"]
             del page["description"]
             long_res = "Snippet: {}\nContent: {}".format(
@@ -395,7 +409,6 @@ class SerpApiSearch(BaseSearch):
             page["content"] = long_res
             fetched_pages.append(page)
         return fetched_pages
-        
 
 
 FORMAT_STRING_TEMPLATE = """
@@ -415,34 +428,37 @@ FORMAT_STRING_TEMPLATE = """
 </search_result>
 """
 
+
 @tool_register.register_module()
 class BingBrowser(BaseAction):
-# class BingBrowser():
-    """Wrapper around the Web Browser Tool.
-    """
-    def __init__(self,
-                 searcher_type: str = 'DuckDuckGoSearch',
-                 timeout: int = 5,
-                 black_list: Optional[List[str]] = [
-                     'enoN',
-                     'youtube.com',
-                     'bilibili.com',
-                     'researchgate.net',
-                 ],
-                 topk: int = 20,
-                 pk_quota: int = 20,
-                 select_quota: int = 8,
-                 description: Optional[dict] = None,
-                 parser: Type[BaseParser] = JsonParser,
-                 search_max_thread: int = 10,
-                 enable: bool = True,
-                 language = "en",
-                 selector_max_workers = 8,
-                 summarizier_max_workers = 8,
-                 selector_model = "gpt-4o-mini",
-                 summarizer_model = "gpt-4o-mini",
-                 **kwargs):
-        
+    # class BingBrowser():
+    """Wrapper around the Web Browser Tool."""
+
+    def __init__(
+        self,
+        searcher_type: str = "DuckDuckGoSearch",
+        timeout: int = 5,
+        black_list: Optional[List[str]] = [
+            "enoN",
+            "youtube.com",
+            "bilibili.com",
+            "researchgate.net",
+        ],
+        topk: int = 20,
+        pk_quota: int = 20,
+        select_quota: int = 8,
+        description: Optional[dict] = None,
+        parser: Type[BaseParser] = JsonParser,
+        search_max_thread: int = 10,
+        enable: bool = True,
+        language="en",
+        selector_max_workers=8,
+        summarizier_max_workers=8,
+        selector_model="gpt-4o-mini",
+        summarizer_model="gpt-4o-mini",
+        **kwargs,
+    ):
+
         self.searcher_type = searcher_type
         self.select_quota = select_quota
         self.search_max_thread = search_max_thread
@@ -453,23 +469,22 @@ class BingBrowser(BaseAction):
         self.pk_quota = pk_quota
         self.selector_max_workers = selector_max_workers
         self.summarizier_max_workers = summarizier_max_workers
-        
+
         self.selector_model = selector_model
         self.summarizer_model = summarizer_model
-        
+
         super().__init__(description, parser, enable)
-    
+
     def __search(self, query_list, search_N):
         queries = query_list if isinstance(query_list, list) else [query_list]
         search_results = {}
-        
+
         query2search_results = {}
 
-        # Search 
+        # Search
         with ThreadPoolExecutor(max_workers=self.search_max_thread) as executor:
             future_to_query = {
-                executor.submit(self.searcher.search, q): q
-                for q in queries
+                executor.submit(self.searcher.search, q): q for q in queries
             }
             for future in as_completed(future_to_query):
                 query = future_to_query[future]
@@ -477,13 +492,16 @@ class BingBrowser(BaseAction):
                     results = future.result()
                 except Exception as exc:
                     import traceback
-                    warnings.warn(f'{query} generated an exception: {traceback.print_exc()}')
+
+                    warnings.warn(
+                        f"{query} generated an exception: {traceback.print_exc()}"
+                    )
                 else:
                     query2search_results[query] = results
         N = search_N
         pk_results = []
         dedup_urls = set()
-        cursors = {query:0 for query in queries}
+        cursors = {query: 0 for query in queries}
         while len(pk_results) < N:
             find = False
             for query in queries:
@@ -494,25 +512,27 @@ class BingBrowser(BaseAction):
                 page = query2search_results[query][index]
                 page["search_query"] = query
                 cursors[query] += 1
-                if page['url'].endswith(".pdf"): continue
-                if page['url'] in dedup_urls: continue 
-                dedup_urls.add(page['url'])
+                if page["url"].endswith(".pdf"):
+                    continue
+                if page["url"] in dedup_urls:
+                    continue
+                dedup_urls.add(page["url"])
                 pk_results.append(page)
                 page["pk_index"] = len(pk_results)
-            if not find: break
-        
+            if not find:
+                break
+
         return pk_results
-    
+
     def __single_fetch(self, search_results):
         return self.searcher.fetch_content(search_results)
-        
-    
+
     def __fetch(self, search_results):
         new_search_results = []
         with ThreadPoolExecutor() as executor:
             future_to_id = {
-                executor.submit(self.search.fetch,
-                                page['url']): page for page in search_results
+                executor.submit(self.search.fetch, page["url"]): page
+                for page in search_results
             }
 
             for future in as_completed(future_to_id):
@@ -528,19 +548,32 @@ class BingBrowser(BaseAction):
                         new_search_results.append(page)
         new_search_results = sorted(new_search_results, key=lambda x: x["pk_index"])
         return new_search_results
-    
+
     def __select_and_summarize(self, search_results, question, think, N, query_list):
-        search_results = selector(search_results, question, think, N, query_list, 
-                                  self.language, self.selector_max_workers,
-                                  self.selector_model)
-        search_results = summarizier(search_results, question, think, 
-                                     self.language, self.summarizier_max_workers,
-                                     self.summarizer_model)
+        search_results = selector(
+            search_results,
+            question,
+            think,
+            N,
+            query_list,
+            self.language,
+            self.selector_max_workers,
+            self.selector_model,
+        )
+        search_results = summarizier(
+            search_results,
+            question,
+            think,
+            self.language,
+            self.summarizier_max_workers,
+            self.summarizer_model,
+        )
         return search_results
 
- 
     @tool_api()
-    def full_pipeline_search(self, query_list, user_question, think, global_start_index):
+    def full_pipeline_search(
+        self, query_list, user_question, think, global_start_index
+    ):
         """Bing Web Browser Search API, which can retrieve webpage information
         ### Specific Functions
         1. Through this API, you can search multiple search queries in parallel, obtaining summaries of Bing search results corresponding to each search query. You must further retrieve the full text.
@@ -554,20 +587,20 @@ class BingBrowser(BaseAction):
             - <url></url>: URL of the search result
             - <snippet></snippet>: Summary information of the search result. This information is a summary of the webpage content. To further get the full text, you need to use the BingBrowser-select_click tool
             - <publish_time></publish_time>: Webpage publication time, 'Not provided' indicates that the webpage does not provide a specific time
-            
+
         Args:
             query_list ({"type"-"array","items"-{"type"-"string"}}): A set of search queries to be searched in parallel
             user_question ({"type": "string"}): User question
             think ({"type": "string"}): Thinking
             global_start_index ({"type": "int"}): start_index
-            
+
         Returns:
             Dict[str, str]: dict of search results
         """
-        search_N = self.pk_quota # 20
-        select_N = max(len(query_list), self.select_quota) # 4
+        search_N = self.pk_quota  # 20
+        select_N = max(len(query_list), self.select_quota)  # 4
         search_cache = caches["search"]
-        
+
         # Load Cache
         cache_name = "BingBrowser.full_pipeline_search.BingSearch"
         call_args_dict = {
@@ -578,17 +611,16 @@ class BingBrowser(BaseAction):
             "global_start_index": global_start_index,
             "searcher": self.searcher_type,
         }
-        
+
         cache_result = search_cache.get_cache(
-            name = cache_name,
-            call_args_dict = call_args_dict
+            name=cache_name, call_args_dict=call_args_dict
         )
         if cache_result is not None:
             return cache_result
 
         # search
         pk_search_results = self.__search(query_list, search_N)
-        
+
         ori_cnt = len(pk_search_results)
         ori_urls = [res["url"] for res in pk_search_results]
         # fetch web page content
@@ -597,13 +629,19 @@ class BingBrowser(BaseAction):
             pk_search_results = self.__single_fetch(pk_search_results)
         else:
             raise Exception()
-            
-        logger.info("Querys {} after pk get {} results, fetched {} results, succ urls: \n{}, \nfailed urls: \n{}".format(
-            str(query_list), ori_cnt, len(pk_search_results), 
-            "\n".join([res["url"] for res in pk_search_results]),
-            "\n".join(list(set(ori_urls) - set([res["url"] for res in pk_search_results])))
-        ))
-        
+
+        logger.info(
+            "Querys {} after pk get {} results, fetched {} results, succ urls: \n{}, \nfailed urls: \n{}".format(
+                str(query_list),
+                ori_cnt,
+                len(pk_search_results),
+                "\n".join([res["url"] for res in pk_search_results]),
+                "\n".join(
+                    list(set(ori_urls) - set([res["url"] for res in pk_search_results]))
+                ),
+            )
+        )
+
         # Check if we have any valid results
         if not pk_search_results:
             logger.warning("No web_pages found in search results")
@@ -612,64 +650,69 @@ class BingBrowser(BaseAction):
                 "web_pages": [],
                 "result": "No web pages could be retrieved due to access restrictions (403 Forbidden) or other errors.",
                 "juege_and_summarized_search_results": [],
-                "exclude_search_results": []
+                "exclude_search_results": [],
             }
             # save cache
             search_cache.save_cache(
-                name=cache_name,
-                call_args_dict=call_args_dict,
-                value=default_result
+                name=cache_name, call_args_dict=call_args_dict, value=default_result
             )
             return default_result
-            
+
         logger.info("Start Select and Summarize")
-            
+
         # select
-        juege_and_summarized_search_results = self.__select_and_summarize(pk_search_results, user_question, think, select_N, query_list)
+        juege_and_summarized_search_results = self.__select_and_summarize(
+            pk_search_results, user_question, think, select_N, query_list
+        )
         # Final
         results = []
-        for idx, page in enumerate(juege_and_summarized_search_results, start=global_start_index):
+        for idx, page in enumerate(
+            juege_and_summarized_search_results, start=global_start_index
+        ):
             page["global_index"] = idx
-            results.append(FORMAT_STRING_TEMPLATE.format(
-                index = idx,
-                title=page["title"],
-                url=page["url"],
-                publish_time=page["publish_time"],
-                content=page["summary"]
-            ))
+            results.append(
+                FORMAT_STRING_TEMPLATE.format(
+                    index=idx,
+                    title=page["title"],
+                    url=page["url"],
+                    publish_time=page["publish_time"],
+                    content=page["summary"],
+                )
+            )
         results = "\n\n".join(results)
         select_urls = set([page["url"] for page in juege_and_summarized_search_results])
-        
+
         search_result = {
             "web_pages": juege_and_summarized_search_results,
             "result": results,
             "juege_and_summarized_search_results": juege_and_summarized_search_results,
-            "exclude_search_results": [res for res in pk_search_results if res["url"] not in select_urls]
+            "exclude_search_results": [
+                res for res in pk_search_results if res["url"] not in select_urls
+            ],
         }
-        
+
         # save cache
         search_cache.save_cache(
-            name = cache_name,
-            call_args_dict = call_args_dict,
-            value = search_result
+            name=cache_name, call_args_dict=call_args_dict, value=search_result
         )
-    
-        return search_result
 
+        return search_result
 
 
 if __name__ == "__main__":
     from recursive.cache import Cache
+
     caches["search"] = Cache("temp/search")
     caches["web_page"] = Cache("temp/web_page")
     caches["llm"] = Cache("temp/llm")
 
-    browser = BingBrowser(searcher_type="SerpApiSearch",
-                          backend_engine = "bing",
-                          cc = "US",
-                          webpage_helper_max_threads = 10,
-                          search_max_thread = 10,
-                          pk_quota = 20,
-                          select_quota = 4,
-                          language = "en"
-                          )
+    browser = BingBrowser(
+        searcher_type="SerpApiSearch",
+        backend_engine="bing",
+        cc="US",
+        webpage_helper_max_threads=10,
+        search_max_thread=10,
+        pk_quota=20,
+        select_quota=4,
+        language="en",
+    )

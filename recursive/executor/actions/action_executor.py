@@ -20,18 +20,21 @@ class ActionExecutor:
             action list. Defaults to False.
     """
 
-    def __init__(self,
-                 actions: Union[BaseAction, List[BaseAction]],
-                 invalid_action: BaseAction = InvalidAction(),
-                 no_action: BaseAction = NoAction(),
-                 finish_action: BaseAction = FinishAction(),
-                 finish_in_action: bool = False):
+    def __init__(
+        self,
+        actions: Union[BaseAction, List[BaseAction]],
+        invalid_action: BaseAction = InvalidAction(),
+        no_action: BaseAction = NoAction(),
+        finish_action: BaseAction = FinishAction(),
+        finish_in_action: bool = False,
+    ):
         if isinstance(actions, BaseAction):
             actions = [actions]
 
         for action in actions:
-            assert isinstance(action, BaseAction), \
-                f'action must be BaseAction, but got {type(action)}'
+            assert isinstance(
+                action, BaseAction
+            ), f"action must be BaseAction, but got {type(action)}"
         if finish_in_action:
             actions.append(finish_action)
         self.actions = {action.name: action for action in actions}
@@ -45,9 +48,9 @@ class ActionExecutor:
             if not action.enable:
                 continue
             if action.is_toolkit:
-                for api in action.description['api_list']:
+                for api in action.description["api_list"]:
                     api_desc = api.copy()
-                    api_desc['name'] = f"{action_name}.{api_desc['name']}"
+                    api_desc["name"] = f"{action_name}.{api_desc['name']}"
                     actions.append(api_desc)
             else:
                 action_desc = action.description.copy()
@@ -64,8 +67,9 @@ class ActionExecutor:
             return list(self.actions.keys())
 
     def add_action(self, action: BaseAction):
-        assert isinstance(action, BaseAction), \
-            f'action must be BaseAction, but got {type(action)}'
+        assert isinstance(
+            action, BaseAction
+        ), f"action must be BaseAction, but got {type(action)}"
         self.actions[action.name] = action
 
     def del_action(self, name: str):
@@ -73,8 +77,7 @@ class ActionExecutor:
             del self.actions[name]
 
     def __call__(self, name: str, command: str) -> ActionReturn:
-        action_name, api_name = (
-            name.split('.') if '.' in name else (name, 'run'))
+        action_name, api_name = name.split(".") if "." in name else (name, "run")
         if not self.is_valid(action_name):
             if name == self.no_action.name:
                 action_return = self.no_action(command)

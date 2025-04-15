@@ -1,6 +1,3 @@
-
-
-
 ori = """
 - **Data Accuracy and Evidence Support**:  
 \t- **Detailed Data**: The report must rely on comprehensive and accurate data from authoritative sources.  

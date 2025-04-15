@@ -2,6 +2,7 @@
 from recursive.agent.prompts.base import PromptTemplate
 from recursive.agent.prompts.base import prompt_register
 from datetime import datetime
+
 now = datetime.now()
 
 
@@ -49,7 +50,6 @@ atomic/complex
 </result>
 """.strip()
 
-        
         content_template = """
 already-written novel:
 ```
@@ -77,8 +77,8 @@ The writing task you need to evaluate:
 ```
 """.strip()
         super().__init__(system_message, content_template)
-        
-        
+
+
 @prompt_register.register_module()
 class StoryWritingNLWriteAtomEN(PromptTemplate):
     def __init__(self) -> None:
@@ -114,7 +114,6 @@ atomic/complex
 </result>
 """.strip()
 
-        
         content_template = """
 already-written novel:
 ```

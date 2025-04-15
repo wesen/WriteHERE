@@ -2,4 +2,3 @@ import recursive.agent.prompts.story_writing_wo_search_nl_version_english.reason
 import recursive.agent.prompts.story_writing_wo_search_nl_version_english.write_combine_atom_and_update
 import recursive.agent.prompts.story_writing_wo_search_nl_version_english.write_planning
 import recursive.agent.prompts.story_writing_wo_search_nl_version_english.writer
-

@@ -11,23 +11,36 @@ import os
 import glob
 import importlib.util
 from enum import Enum
+
 # from autoprompt.utils.string_utils import property_getter_safe
 
 csv.field_size_limit(100000000)
 
 __all__ = [
-    "auto_read", "auto_write",
-    "change_suffix", "ensure_dir",
-    "file_convert", "file_prefix",
-    "jsonl_to_csv", "read_csv",
-    "read_jsonl", "write_json",
-    "write_jsonl", "write_csv",
-    "clean_text", "make_mappings", "add_suffix", "make_key2item", "random_select", "parse_tag_result",
-    "parse_hierarchy_tags_result"
-]    
+    "auto_read",
+    "auto_write",
+    "change_suffix",
+    "ensure_dir",
+    "file_convert",
+    "file_prefix",
+    "jsonl_to_csv",
+    "read_csv",
+    "read_jsonl",
+    "write_json",
+    "write_jsonl",
+    "write_csv",
+    "clean_text",
+    "make_mappings",
+    "add_suffix",
+    "make_key2item",
+    "random_select",
+    "parse_tag_result",
+    "parse_hierarchy_tags_result",
+]
+
 
 def parse_tag_result(content, tag):
-    start = False 
+    start = False
     results = []
     for line in content.split("\n"):
         line = line.strip()
@@ -49,8 +62,7 @@ def parse_tag_result(content, tag):
         match_res = "\n".join(match_res)
         return match_res
     return ""
-        
-            
+
 
 def parse_hierarchy_tags_result(res, tags):
     if len(tags) == 0:
@@ -60,14 +72,21 @@ def parse_hierarchy_tags_result(res, tags):
     for tag in tags:
         res = parse_tag_result(res, tag)
     return res
-        
+
 
 def random_select(ifn, cnt):
     data = auto_read(ifn)
     import random
+
     random.shuffle(data)
-    ofn = "{}/{}.random.{}{}".format(str(pathlib.Path(ifn).parent), str(pathlib.Path(ifn).stem), cnt, str(pathlib.Path(ifn).suffix))
+    ofn = "{}/{}.random.{}{}".format(
+        str(pathlib.Path(ifn).parent),
+        str(pathlib.Path(ifn).stem),
+        cnt,
+        str(pathlib.Path(ifn).suffix),
+    )
     auto_write(data[:cnt], ofn)
+
 
 def add_suffix(fn, suffix, f_type=None):
     p = pathlib.Path(fn)
@@ -83,7 +102,11 @@ def make_key2item(items, keys, verbose=False):
     for item in items:
         key_string = ":".join([str(property_getter_safe(item, key)) for key in keys])
         if verbose and key_string in key2items:
-            print("Duplicate key {}, content duplicate: {}".format(key_string, str(key2items[key_string]) == str(item)))
+            print(
+                "Duplicate key {}, content duplicate: {}".format(
+                    key_string, str(key2items[key_string]) == str(item)
+                )
+            )
 
         key2items[key_string] = item
     if len(key2items) != len(items):
@@ -91,14 +114,12 @@ def make_key2item(items, keys, verbose=False):
     return key2items
 
 
-
-
 def make_mappings(fn):
     module_dir = "{}/prompts".format(pathlib.Path(fn).parent)
     ALL_SYSTEM_MESSAGE_MAPPINGS = {}
     ALL_PROMPT_MAPPINGS = {}
 
-    module_files = glob.glob(f'{module_dir}/prompt_*.py')
+    module_files = glob.glob(f"{module_dir}/prompt_*.py")
     for fn in module_files:
         # 提取模块名
         module_name = os.path.basename(fn)[:-3]  # 去掉.py后缀
@@ -111,13 +132,10 @@ def make_mappings(fn):
 
         # 移除前面的prompt_
         key = module_name[7:]
-        ALL_SYSTEM_MESSAGE_MAPPINGS[key] = {
-            "": module.PROMPTS
-        }
-        ALL_PROMPT_MAPPINGS[key] = {
-            "": module.CONTENT_TEMPLATE
-        }
+        ALL_SYSTEM_MESSAGE_MAPPINGS[key] = {"": module.PROMPTS}
+        ALL_PROMPT_MAPPINGS[key] = {"": module.CONTENT_TEMPLATE}
     return ALL_SYSTEM_MESSAGE_MAPPINGS, ALL_PROMPT_MAPPINGS
+
 
 def ensure_dir(path: str):
     """create directories if *path* does not exist"""
@@ -132,7 +150,7 @@ def file_prefix(filename) -> str:
 
 
 def read_jsonl(filename: str, jsonl_format=True) -> List[Dict]:
-    with open(filename, 'r') as f:
+    with open(filename, "r") as f:
         if filename.endswith(".jsonl") or jsonl_format:
             data = []
             for line in f.readlines():
@@ -144,7 +162,7 @@ def read_jsonl(filename: str, jsonl_format=True) -> List[Dict]:
                     continue
                 # except Exception as e:
                 #     print("load jsonl line error, msg: {}".format(str(e)))
-                #     continue 
+                #     continue
             # data = [json.loads(line) for line in f.readlines()]
         else:
             data = json.load(f)
@@ -161,7 +179,7 @@ def read_csv(file_path) -> List[Dict]:
     """
     data = []
 
-    with open(file_path, 'r') as file:
+    with open(file_path, "r") as file:
         csv_reader = csv.DictReader(file)
         for row in csv_reader:
             data.append(row)
@@ -185,8 +203,8 @@ def change_suffix(filename: str, suffix: str) -> str:
 def write_csv(data: List[Dict], filename: str = "data.csv"):
     headers = list(data[0].keys())
 
-    with open(filename, 'w', newline='', encoding='utf-8-sig') as outfile:
-        writer = csv.DictWriter(outfile, fieldnames=headers, escapechar='\\')
+    with open(filename, "w", newline="", encoding="utf-8-sig") as outfile:
+        writer = csv.DictWriter(outfile, fieldnames=headers, escapechar="\\")
         writer.writeheader()
         writer.writerows(data)
 
@@ -210,13 +228,15 @@ def jsonl_to_csv(jsonl_file: str, csv_file: str = None):
 
 def write_json(data: List[Dict], filename: str = "data.json", indent: int = 2):
     """using indent = None but not 0 as defalut behavior"""
-    with open(filename, 'w') as f:
+    with open(filename, "w") as f:
         json.dump(data, f, ensure_ascii=False, indent=indent)
 
 
 def write_jsonl(
-    data: List[Dict], filename: str = "data.jsonl",
-    indent: int = None, open_mode: str = "w"
+    data: List[Dict],
+    filename: str = "data.jsonl",
+    indent: int = None,
+    open_mode: str = "w",
 ):
     """
     Save data to jsonl file
@@ -265,7 +285,9 @@ def auto_write(data, filename: str):
         return WRITE_MAPPING[suffix](data, filename)
 
 
-def file_convert(filename: str, to_file: str = None, format: str = "jsonl -> csv") -> str:
+def file_convert(
+    filename: str, to_file: str = None, format: str = "jsonl -> csv"
+) -> str:
     """Auto convert data from one format to another format, write to a file and return filename"""
     from_format, to_format = format.split("->")
     from_format, to_format = from_format.strip(), to_format.strip()
@@ -280,11 +302,18 @@ def file_convert(filename: str, to_file: str = None, format: str = "jsonl -> csv
 
 def clean_text(text):
     value = text.strip().replace("**", "")
-    pattern = r'\^\[\d+\]\^'
+    pattern = r"\^\[\d+\]\^"
     value = re.sub(pattern, "", value)
     return value
 
-def convert_history_string_to_list(a, remove_prefix=False, user_prefix="用户：", assistant_prefix="助手：", style="list"):
+
+def convert_history_string_to_list(
+    a,
+    remove_prefix=False,
+    user_prefix="用户：",
+    assistant_prefix="助手：",
+    style="list",
+):
     convs = []
     conv = []
     if a == "":
@@ -302,14 +331,14 @@ def convert_history_string_to_list(a, remove_prefix=False, user_prefix="用户�
     for line in a:
         line += "\n"
         if line.startswith(user_prefix):
-            if len(conv) != 0: 
+            if len(conv) != 0:
                 convs.append(conv)
             conv = [line, ""]
         elif line.startswith(assistant_prefix):
             conv[1] += line
         else:
             if conv[1] == "":
-                conv[0] += line 
+                conv[0] += line
             else:
                 conv[1] += line
     convs.append(conv)
@@ -320,7 +349,7 @@ def convert_history_string_to_list(a, remove_prefix=False, user_prefix="用户�
         remove_prefix = True
 
     for conv in convs:
-        if len(conv) != 2: 
+        if len(conv) != 2:
             print("len(conv) != 2")
             error = True
             # continue
@@ -342,23 +371,18 @@ def convert_history_string_to_list(a, remove_prefix=False, user_prefix="用户�
             # print("\n\n=====\n\n")
             continue
         if remove_prefix:
-            conv[0] = conv[0][len(user_prefix):]
-            conv[1] = conv[1][len(assistant_prefix):]
+            conv[0] = conv[0][len(user_prefix) :]
+            conv[1] = conv[1][len(assistant_prefix) :]
         new_convs.append(conv)
 
     if style == "train":
         results = []
         for u, a in new_convs:
-            results.append({
-                "role": "user",
-                "content": u
-            })
-            results.append({
-                "role": "assistant",
-                "content": a
-            })
+            results.append({"role": "user", "content": u})
+            results.append({"role": "assistant", "content": a})
         new_convs = results
     return new_convs
+
 
 def enum_to_json(o):
     if isinstance(o, Enum):

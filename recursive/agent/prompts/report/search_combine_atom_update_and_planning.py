@@ -2,6 +2,7 @@
 from recursive.agent.prompts.base import PromptTemplate
 from recursive.agent.prompts.base import prompt_register
 from datetime import datetime
+
 now = datetime.now()
 
 
@@ -32,9 +33,10 @@ Think about the goal update;
 # Examples
 ## Example1
 
-""".strip().format("02.13.2025")
+""".strip().format(
+            "02.13.2025"
+        )
 
-        
         content_template = """
 already-written report:
 ```

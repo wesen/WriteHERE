@@ -5,6 +5,7 @@ from datetime import datetime
 
 now = datetime.now()
 
+
 @prompt_register.register_module()
 class ReportPlanning(PromptTemplate):
     def __init__(self) -> None:

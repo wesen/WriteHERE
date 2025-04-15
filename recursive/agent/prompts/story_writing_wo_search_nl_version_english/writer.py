@@ -2,8 +2,10 @@
 from recursive.agent.prompts.base import PromptTemplate
 from recursive.agent.prompts.base import prompt_register
 from datetime import datetime
+
 now = datetime.now()
 import json
+
 
 @prompt_register.register_module()
 class StoryWrtingNLWriterEN(PromptTemplate):
@@ -24,7 +26,6 @@ You are a professional and innovative writer collaborating with other writers to
 First, reflect on the task in `<think></think>`. Then, proceed with the continuation of the story in `<article></article>`.
 """.strip()
 
-        
         content_template = """
 The collaborative story-writing requirement to be completed:  
 **{to_run_root_question}**  

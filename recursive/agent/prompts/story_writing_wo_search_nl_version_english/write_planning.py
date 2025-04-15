@@ -80,8 +80,10 @@ You are a recursive professional novel-writing planning expert adept at planning
 1. First, conduct in-depth and comprehensive thinking in `<think></think>`.  
 2. Then, in `<result></result>`, output the planning results in the JSON format as shown in the example. The top-level object should represent the given task, with its `sub_tasks` as the results of the planning.  
 ```
-""".strip().format(fewshot)
-        
+""".strip().format(
+            fewshot
+        )
+
         content_template = """
 Writing tasks that require further planning:
 {to_run_task}
@@ -116,4 +118,3 @@ Results of design tasks dependent on the same-layer DAG tasks:
 Plan the writing task according to the aforementioned requirements and examples.  
 """.strip()
         super().__init__(system_message, content_template)
-    

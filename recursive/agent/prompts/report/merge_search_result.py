@@ -2,6 +2,7 @@
 from recursive.agent.prompts.base import PromptTemplate
 from recursive.agent.prompts.base import prompt_register
 from datetime import datetime
+
 now = datetime.now()
 
 
@@ -31,7 +32,6 @@ Today is {today_date}, you are a search result integration specialist. Based on 
 Do not append any other information after </result>
 """.strip()
 
-
         content_template = """
 The overall writing task from the user is: **{to_run_root_question}**. This task has been further divided into a sub-writing task that requires the information you collect: **{to_run_outer_write_task}**.  
 
@@ -47,5 +47,3 @@ Within the context of the overall writing request and the sub-writing task, you 
 Organize and integrate information from **Search Results and Short Summarys** as instructions in # Your Task, # Input Information and # Requirements. Output as # Output Format, first brief think in <think></think> then give the complete results in <result></result>. Do not forget to marking information sources using "webpage[webpage index]" for traceability, where index in web_pages_short_summary indicates webpage ID.
 """.strip()
         super().__init__(system_message, content_template)
-
-        

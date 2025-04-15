@@ -7,6 +7,5 @@ class Register:
         def decorator(cls):
             self.module_dict[cls.__name__] = cls
             return cls
+
         return decorator
-    
-    

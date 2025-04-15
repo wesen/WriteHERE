@@ -2,6 +2,7 @@
 from recursive.agent.prompts.base import PromptTemplate
 from recursive.agent.prompts.base import prompt_register
 from datetime import datetime
+
 now = datetime.now()
 import json
 
@@ -10,7 +11,7 @@ import json
 class ReportWriter(PromptTemplate):
     def __init__(self) -> None:
         system_message = "".strip()
-        
+
         content_template = """
 The collaborative report-writing requirement to be completed:  
 **{to_run_root_question}**  

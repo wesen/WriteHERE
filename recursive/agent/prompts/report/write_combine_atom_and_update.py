@@ -2,13 +2,15 @@
 from recursive.agent.prompts.base import PromptTemplate
 from recursive.agent.prompts.base import prompt_register
 from datetime import datetime
+
 now = datetime.now()
+
 
 @prompt_register.register_module()
 class ReportAtomWithUpdate(PromptTemplate):
     def __init__(self) -> None:
         system_message = ""
-        
+
         content_template = """
 results of search and analysis tasks completed:
 ```
@@ -96,8 +98,8 @@ The writing task you need to evaluate:
 Complete the goal-updating and atomic writing task determination job as requirements in # Summary and Introduction, # Goal Updating Tips, # Atomic Task Determination Rules and # Report Requirements. Output follow the # Output Format Requirement, think in <think></think> and output the result in <result></result>
 """.strip()
         super().__init__(system_message, content_template)
-        
-        
+
+
 @prompt_register.register_module()
 class ReportAtom(PromptTemplate):
     def __init__(self) -> None:
@@ -178,6 +180,5 @@ The writing task you need to evaluate:
 ```
 Complete the atomic writing task determination job as requirements in # Summary and Introduction, # Atomic Task Determination Rules and # Report Requirements. Output follow the # Output Format Requirement, think in <think></think> and output the result in <result></result>
 """.strip()
-
 
         super().__init__(system_message, content_template)
