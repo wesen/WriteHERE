@@ -5,11 +5,11 @@ from abc import ABC, abstractmethod
 from overrides import overrides
 import random
 import json
-from recursive.utils.register import Register
-from recursive.executor.actions.register import executor_register, tool_register
-from recursive.executor.actions import ActionExecutor
+from recursive.utils.registry import Register
+from recursive.executor.action.registry import executor_register, tool_register
+from recursive.executor.action import ActionExecutor
 from recursive.utils.file_io import make_mappings
-from recursive.llm.llm import OpenAIApiProxy
+from recursive.llm.base import OpenAIApiProxy
 from recursive.utils.file_io import parse_hierarchy_tags_result
 from copy import deepcopy
 from pprint import pprint

@@ -1,7 +1,7 @@
 from typing import Dict, List, Union
 
 from recursive.executor.schema import ActionReturn, ActionValidCode
-from .base_action import BaseAction
+from .base import BaseAction
 from .builtin_actions import FinishAction, InvalidAction, NoAction
 
 

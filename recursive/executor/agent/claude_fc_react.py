@@ -1,18 +1,14 @@
-from typing import Dict, List, Tuple, Union
-from recursive.executor.agents import ActionExecutor
+from typing import Dict, List, Union
+from recursive.executor.agent import ActionExecutor
 from recursive.executor.schema import (
     ActionReturn,
-    ActionStatusCode,
     AgentReturn,
-    get_json_schema,
 )
-from recursive.executor.agents.base_agent import BaseAgent
+from recursive.executor.agent.base import BaseAgent
 from recursive.utils.file_io import make_mappings
-from pprint import pprint
 import json
-import requests
-from recursive.executor.actions.register import executor_register
-from recursive.llm.llm import OpenAIApiProxy
+from recursive.executor.action.registry import executor_register
+from recursive.llm.base import OpenAIApiProxy
 from loguru import logger
 from recursive.utils.file_io import parse_hierarchy_tags_result
 from recursive.agent.prompts.base import prompt_register
@@ -374,10 +370,10 @@ if __name__ == "__main__":
 </web_page>
     """
 
-    from recursive.executor.actions.bing_browser import BingBrowser
+    from recursive.executor.action.bing_browser import BingBrowser
 
-    # from recursive.executor.actions.google_scholar_search import GoogleScholar
-    from recursive.executor.actions.python_interpreter import PythonInterpreter
+    # from recursive.executor.action.google_scholar_search import GoogleScholar
+    from recursive.executor.action.python_interpreter import PythonInterpreter
 
     custom_format = "<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <level>{message}</level>"
     log_id = logger.add("test16.log", format=custom_format)
@@ -415,7 +411,7 @@ if __name__ == "__main__":
         },
     )
 
-    from recursive.agent.agent_base import DummyRandomPlanningAgent
+    from recursive.agent.agent.base import DummyRandomPlanningAgent
 
     # from recursive.agent.prompts.search_think_write_push_r1.merge_search_result import MergeSearchResultZHDetailedWithOnlySummaryENR1V2
     from recursive.agent.prompts.report.merge_search_result import (

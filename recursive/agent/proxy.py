@@ -1,5 +1,5 @@
-from typing import Dict, List
-from recursive.agent.agent_base import agent_register
+from typing import Dict
+from recursive.agent.agent.base import agent_register
 
 # from recursive.utils.file_io import make_mappings
 

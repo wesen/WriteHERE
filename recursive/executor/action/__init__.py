@@ -1,7 +1,7 @@
 from typing import Type
 
 from .action_executor import ActionExecutor
-from .base_action import TOOL_REGISTRY, BaseAction, tool_api
+from .base import TOOL_REGISTRY, BaseAction, tool_api
 from .bing_browser import BingBrowser
 from .builtin_actions import FinishAction, InvalidAction, NoAction
 from .parser import BaseParser, JsonParser, TupleParser

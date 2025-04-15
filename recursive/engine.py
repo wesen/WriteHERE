@@ -383,7 +383,7 @@ def report_writing(
         today_date = datetime.now().strftime("%b %d, %Y")
     config = {
         "language": "en",
-        # Agent is Defined in recursive.agent.agents.regular
+        # Agent is Defined in recursive.agent.agent.regular
         # update, prior_reflect, planning_post_reflect and execute_post_reflect is skipped, by using Dummy Agent
         # prompt is Defined in recursive.agent.prompts
         "today_date": today_date,  # Add the today_date parameter to config
@@ -443,7 +443,7 @@ def report_writing(
             "execute": {
                 "react_agent": True,  # use Search Agent
                 "prompt_version": "SearchAgentENPrompt",  # see recursive.agent.prompts.search_agent.main
-                "searcher_type": "SerpApiSearch",  # see recursive.executor.actions.bing_browser
+                "searcher_type": "SerpApiSearch",  # see recursive.executor.action.bing_browser
                 "llm_args": {
                     "model": global_use_model,  # set the llm
                 },
@@ -459,7 +459,7 @@ def report_writing(
                 },
                 "temperature": 0.2,  # search agent
                 "max_turn": 4,  # search agent max turn
-                "llm_merge": True,  # use llm to merge search agent result, see recursive.agent.agents.regular.SimpleExcutor.search_merge, the prompt is set in config
+                "llm_merge": True,  # use llm to merge search agent result, see recursive.agent.agent.regular.SimpleExcutor.search_merge, the prompt is set in config
                 "only_use_react_summary": False,
                 "webpage_helper_max_threads": 10,  # use requests to download web page
                 "search_max_thread": 4,  # serpapi parallel

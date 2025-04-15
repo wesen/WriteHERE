@@ -4,7 +4,6 @@ from collections import defaultdict
 import re
 from recursive.cache import Cache
 
-
 article = ""
 caches = {"search": None, "llm": None, "web_page": None}
 
@@ -161,8 +160,8 @@ class Memory:
             need_info_nodes[dist].add(cur)
             existed_need_info_nodes.add(cur.hashkey)
             for par in sorted(
-                cur.node_graph_info["parent_nodes"],
-                key=lambda x: int(str(x.nid).split(".")[-1]),
+                    cur.node_graph_info["parent_nodes"],
+                    key=lambda x: int(str(x.nid).split(".")[-1]),
             ):
                 get_need_info_nodes(par, dist + 1)
 
@@ -172,7 +171,7 @@ class Memory:
 
         dist_group_precedents = []
         for dist, precedents in sorted(
-            need_info_nodes.items(), reverse=True
+                need_info_nodes.items(), reverse=True
         ):  # Sort dist from largest to smallest
             precedents = sorted(
                 precedents, key=lambda x: int(str(x.nid).split(".")[-1])
@@ -194,8 +193,8 @@ class Memory:
                 outer, max_dist=3
             )
             if (
-                "se a 300-word structured response that: 1) Opens with"
-                in node.task_info["goal"]
+                    "se a 300-word structured response that: 1) Opens with"
+                    in node.task_info["goal"]
             ):
                 print(
                     "outer_inner_dist_group_precedents",
@@ -219,7 +218,7 @@ class Memory:
 
     def collect_node_run_info(self, graph_node):
         if (
-            graph_node.is_atom
+                graph_node.is_atom
         ):  # For atomic tasks, set the obtained results as its Planning node
             # graph_node = graph_node.node_graph_info["outer_node"].topological_task_queue[0]
             graph_node = graph_node.node_graph_info["outer_node"]

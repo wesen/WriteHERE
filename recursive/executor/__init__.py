@@ -1,2 +1,2 @@
-import recursive.executor.actions
-import recursive.executor.agents
+import recursive.executor.action
+import recursive.executor.agent

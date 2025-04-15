@@ -1,8 +1,7 @@
 # coding: utf8
 from collections import defaultdict, deque
 from enum import Enum
-from typing import List, Dict
-from recursive.utils.register import Register
+from recursive.utils.registry import Register
 from recursive.agent.proxy import AgentProxy
 from abc import ABC, abstractmethod
 from datetime import datetime

@@ -1,4 +1,4 @@
-from recursive.utils.register import Register
+from recursive.utils.registry import Register
 from abc import ABC, abstractmethod
 from loguru import logger
 

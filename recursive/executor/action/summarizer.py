@@ -3,7 +3,7 @@ import json
 import tqdm
 from concurrent.futures import ThreadPoolExecutor
 import threading
-from recursive.llm.llm import OpenAIApiProxy
+from recursive.llm.base import OpenAIApiProxy
 import time
 from recursive.utils.file_io import parse_hierarchy_tags_result
 from loguru import logger

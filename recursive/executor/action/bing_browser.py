@@ -8,10 +8,10 @@ from typing import List, Optional, Tuple, Type, Union
 
 import requests
 
-from recursive.executor.actions import BaseAction, tool_api
-from recursive.executor.actions.parser import BaseParser, JsonParser
-from recursive.executor.actions.register import tool_register
-from recursive.executor.actions.selector_and_summazier import selector, summarizier
+from recursive.executor.action import BaseAction, tool_api
+from recursive.executor.action.parser import BaseParser, JsonParser
+from recursive.executor.action.registry import tool_register
+from recursive.executor.action.summarizer import selector, summarizier
 from recursive.memory import caches
 
 from langchain_text_splitters import RecursiveCharacterTextSplitter

@@ -1,7 +1,7 @@
 from typing import Optional
 
-from recursive.executor.actions.base_action import BaseAction, tool_api
-from recursive.executor.actions.parser import BaseParser
+from recursive.executor.action.base import BaseAction, tool_api
+from recursive.executor.action.parser import BaseParser
 from recursive.executor.schema import ActionReturn, ActionStatusCode, ActionValidCode
 
 

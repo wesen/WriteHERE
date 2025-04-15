@@ -1,4 +1,4 @@
-from recursive.utils.register import Register
+from recursive.utils.registry import Register
 
 tool_register = Register("tool_register")
 executor_register = Register("executor_register")

@@ -1,2 +1,2 @@
-import recursive.agent.agent_base
-import recursive.agent.agents
+import recursive.agent.agent.base
+import recursive.agent.agent

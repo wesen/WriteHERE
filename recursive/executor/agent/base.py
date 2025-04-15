@@ -1,5 +1,5 @@
-from recursive.executor.actions import ActionExecutor
-from recursive.executor.actions.base_action import BaseAction
+from recursive.executor.action import ActionExecutor
+from recursive.executor.action.base import BaseAction
 from recursive.executor.schema import AgentReturn
 
 
