@@ -1,0 +1,551 @@
+diff --git a/recursive/graph.py b/recursive/graph.py
+index ce53848..a185f4f 100644
+--- a/recursive/graph.py
++++ b/recursive/graph.py
+@@ -11,6 +11,9 @@ import uuid
+ from loguru import logger
+ import json
+ from copy import deepcopy
++from opentelemetry import trace
++
++tracer = trace.get_tracer(__name__)
+ 
+ task_register = Register("task_register")
+ 
+@@ -152,13 +155,16 @@ class AbstractNode(ABC):
+             - verify_standard
+             - task_type
+         """
++        with tracer.start_as_current_span("Node.Create") as span:
+             self.config = config
+             self.nid = nid
+             self.hashkey = str(uuid.uuid4())
+             self.node_graph_info = node_graph_info
+             self.task_info = task_info
+             self.inner_graph = Graph(self)  # Internal Planning Graph
+-        self.raw_plan = None  # raw plan returned by planner, represented in JSON format
++            self.raw_plan = (
++                None  # raw plan returned by planner, represented in JSON format
++            )
+             self.node_type = node_type  # Node type
+             self.status = TaskStatus.NOT_READY  # Execution status, default is NOT_READY
+             self.agent_proxy = AgentProxy(config)
+@@ -177,6 +183,18 @@ class AbstractNode(ABC):
+             self.define_status()
+             self.check_status_valid()
+ 
++            # Set span attributes after initialization
++            span.set_attribute("node.nid", self.nid)
++            span.set_attribute(
++                "node.type", self.node_type.name if self.node_type else "None"
++            )
++            span.set_attribute("node.task.type", self.task_info.get("task_type", ""))
++            span.set_attribute("node.task.goal", self.task_info.get("goal", ""))
++            span.set_attribute("node.layer", self.node_graph_info.get("layer", -1))
++            span.set_attribute(
++                "node.parent_count", len(self.node_graph_info.get("parent_nodes", []))
++            )
++
+     @property
+     def required_task_info_keys(self):
+         require_keys = self.config["require_keys"][self.task_type_tag]
+@@ -409,6 +427,13 @@ class AbstractNode(ABC):
+ 
+     # ======= Run =======
+     def next_action_step(self, memory, *args, **kwargs):
++        with tracer.start_as_current_span("Node.SelectAction") as span:
++            span.set_attribute("node.nid", self.nid)
++            span.set_attribute("node.task.type", self.task_type_tag)
++            span.set_attribute("node.task.goal", self.task_info.get("goal", ""))
++            span.set_attribute("node.status.before", self.status.name)
++            span.add_event("Action determination started")
++
+             # --- RUN ---
+             if not self.is_activate:
+                 raise NotImplementedError(
+@@ -417,42 +442,101 @@ class AbstractNode(ABC):
+                     )
+                 )
+ 
+-        for condition_func, action_name, next_status in self.status_action_mapping[
+-            self.status
+-        ]:
+-            if condition_func(self, memory, *args, **kwargs):
++            action_name = None
++            result = None
++            condition_matched = False
++            for (
++                condition_func,
++                current_action_name,
++                next_status,
++            ) in self.status_action_mapping[self.status]:
++                condition_result = condition_func(self, memory, *args, **kwargs)
++                span.add_event(
++                    "Checking condition",
++                    {
++                        "condition": condition_func.__name__,  # Simple representation
++                        "result": condition_result,
++                    },
++                )
++
++                if condition_result:
++                    span.add_event(
++                        "Action selected",
++                        {
++                            "action.name": current_action_name,
++                            "node.status.next": next_status.name,
++                        },
++                    )
+                     logger.info(
+                         "Do Action: {}, make {} -> {}".format(
+-                        action_name, self.status, next_status
++                            current_action_name, self.status, next_status
+                         )
+                     )
+-                result = self.do_action(action_name, memory, *args, **kwargs)
++                    span.add_event("Calling do_action")
++                    result = self.do_action(
++                        current_action_name, memory, *args, **kwargs
++                    )
+                     self.status = next_status
++                    action_name = current_action_name
++                    condition_matched = True
+                     break
+-        else:
++
++            if not condition_matched:
++                span.add_event("No condition matched")
+                 raise Exception("No Condition Matched for status action, Error!")
+ 
++            span.add_event(
++                "Action finished, status updated",
++                {"node.status.after": self.status.name},
++            )
+             return action_name, result
+ 
+     # ======= Exam =======
+     def do_exam(self, verbose):
++        with tracer.start_as_current_span("Node.EvaluateState") as span:
++            span.set_attribute("node.nid", self.nid)
++            span.set_attribute("node.status.before", self.status.name)
++            span.set_attribute("node.exam.verbose", verbose)
++            span.add_event("Exam started")
++
+             if not self.is_suspend:
+                 raise NotImplementedError(
+                     "Error Status process, status ({}) is not suspend category".format(
+                         self.status
+                     )
+                 )
++
++            status_changed = False
+             for condition_func, next_status in self.status_exam_mapping[self.status]:
+-            if condition_func(self):
++                condition_result = condition_func(self)
++                span.add_event(
++                    "Checking condition",
++                    {
++                        "condition": condition_func.__name__,  # Simple representation
++                        "result": condition_result,
++                    },
++                )
++
++                if condition_result:
+                     if verbose:
+                         logger.info(
+                             "Do Exam, {}:{} make {} -> {}".format(
+-                            self.nid, self.task_info["goal"], self.status, next_status
++                                self.nid,
++                                self.task_info["goal"],
++                                self.status,
++                                next_status,
+                             )
+                         )
++                    span.add_event(
++                        "Status transition triggered",
++                        {"node.status.next": next_status.name},
++                    )
+                     self.status = next_status
++                    status_changed = True
+                     break
+ 
++            span.add_event("Exam finished", {"node.status.after": self.status.name})
++
+     # ======= Save and display Part ======
+     def __str__(self):
+         return self.task_str()
+@@ -489,7 +573,7 @@ class AbstractNode(ABC):
+             "task_info": process_all_node_to_node_str(self.task_info),
+             "node_graph_info": process_all_node_to_node_str(self.node_graph_info),
+             "raw_plan": self.raw_plan,
+-            "node_type": self.node_type.name,
++            "node_type": self.node_type.name if self.node_type else "None",
+             "status": self.status.name,
+             "result": self.result,
+             "inner_graph": self.inner_graph.to_json(),
+@@ -515,9 +599,24 @@ class AbstractNode(ABC):
+ 
+     # ===== Utils ====
+     def plan2graph(self, raw_plan):
++        with tracer.start_as_current_span("Node.PlanToGraph") as span:
++            span.set_attribute("node.nid", self.nid)  # The node BEING planned
++            span.set_attribute("plan.raw.length", len(raw_plan) if raw_plan else 0)
++            try:
++                # Limit summary size to avoid excessive data
++                raw_plan_summary = json.dumps(raw_plan, ensure_ascii=False)[:500]
++            except Exception:
++                raw_plan_summary = str(raw_plan)[:500]
++            span.set_attribute("plan.raw.summary", raw_plan_summary)
++            span.add_event("Raw plan received")
++
++            if not raw_plan:
++                raw_plan = []  # Ensure raw_plan is a list
++
+             if (
+                 len(raw_plan) == 0
+             ):  # Atomic task, still create an execution graph, but the execution graph has only one execute node, iterating through required_task_info_keys and retrieving them.
++                span.add_event("Handling atomic task case")
+                 raw_plan.append(
+                     {
+                         "id": 0,
+@@ -526,64 +625,108 @@ class AbstractNode(ABC):
+                     }
+                 )
+                 for key in self.required_task_info_keys:
+-                if key not in raw_plan[-1]:
++                    if key not in raw_plan[-1] and key in self.task_info:
+                         raw_plan[-1][key] = self.task_info[key]
++                    elif key not in raw_plan[-1]:
++                        raw_plan[-1][key] = "Missing in parent task_info"  # Placeholder
++
++                # Ensure 'task_type' and 'goal' exist for atomic case
++                if "task_type" not in raw_plan[-1]:
++                    raw_plan[-1]["task_type"] = self.task_info.get(
++                        "task_type", "unknown_atomic"
++                    )
++                if "goal" not in raw_plan[-1]:
++                    raw_plan[-1]["goal"] = self.task_info.get("goal", "atomic goal")
++
+             # raw plan is a jsonlist
+             nodes = []
+             id2node = {}
+             for task in raw_plan:
+-            task["goal"] = task["goal"].replace("\n", ";")
+-            if task["task_type"] == "analyze" or task["task_type"] == "analysis":
+-                task["task_type"] = "think"
++                span.add_event(
++                    "Processing task from plan",
++                    {
++                        "task.id": task.get("id", "N/A"),
++                        "task.goal": task.get("goal", "N/A"),
++                        "task.type": task.get("task_type", "N/A"),
++                    },
++                )
++                task_goal = task.get("goal", "Default Goal").replace("\n", ";")
++                task["goal"] = task_goal  # Update task dict as well
++                task_type = task.get("task_type", "unknown")
++                if task_type == "analyze" or task_type == "analysis":
++                    task_type = "think"
++                    task["task_type"] = task_type  # Update task dict
++
+                 node_graph_info = {
+                     "outer_node": self,
+                     "root_node": self.node_graph_info["root_node"],
+-                "parent_nodes": task["dependency"],
++                    "parent_nodes": task.get("dependency", []),  # Use get for safety
+                     "layer": self.node_graph_info["layer"] + 1,
+                 }
+-            if self.config["tag2task_type"][task["task_type"]] == "COMPOSITION":
++
++                task_tag = "unknown_tag"
++                if task_type in self.config["tag2task_type"]:
++                    task_tag = self.config["tag2task_type"][task_type]
++
++                if task_tag == "COMPOSITION":
+                     # If it is the only COMPOSITION task, the length can be assigned through rules
+-                if (
+-                    len(
+-                        [
++                    composition_tasks = [
+                         st
+                         for st in raw_plan
+-                            if self.config["tag2task_type"][st["task_type"]]
++                        if st.get("task_type") in self.config["tag2task_type"]
++                        and self.config["tag2task_type"][st["task_type"]]
+                         == "COMPOSITION"
+                     ]
+-                    )
+-                    == 1
+-                ):
++                    if len(composition_tasks) == 1:
+                         if "length" not in task:
+-                        task["length"] = self.task_info["length"]
++                            task["length"] = self.task_info.get(
++                                "length", "default_length"
++                            )
+ 
+-            task_info = {
+-                key: task[key]
+-                for key in self.config["require_keys"][
+-                    self.config["tag2task_type"][task["task_type"]]
+-                ]
+-            }
++                current_task_info = {}
++                if task_tag in self.config["require_keys"]:
++                    for key in self.config["require_keys"][task_tag]:
++                        current_task_info[key] = task.get(key, f"Missing_{key}")
++                else:
++                    # Fallback if tag not in require_keys (handle unexpected task types)
++                    current_task_info["goal"] = task_goal
++                    current_task_info["task_type"] = task_type
++                    current_task_info["id"] = task.get("id", "N/A")
++                    current_task_info["dependency"] = task.get("dependency", [])
+ 
+                 if "sub_tasks" in task:
+-                task_info["candidate_plan"] = task["sub_tasks"]
++                    current_task_info["candidate_plan"] = task["sub_tasks"]
+                     for st in task["sub_tasks"]:
+-                    st["goal"] = st["goal"].replace("\n", ";")
++                        st["goal"] = st.get("goal", "Default Sub Goal").replace(
++                            "\n", ";"
++                        )
+                 else:
+-                task_info["candidate_plan"] = "Missing"
++                    current_task_info["candidate_plan"] = "Missing"
+ 
+                 node = self.__class__(
+                     config=self.config,
+-                nid=task["id"],
++                    nid=current_task_info["id"],  # Use processed info
+                     node_graph_info=node_graph_info,
+-                task_info=task_info,
++                    task_info=current_task_info,
+                     node_type=(
+                         NodeType.PLAN_NODE
+                         if not task.get("atom")
+                         else NodeType.EXECUTE_NODE
+                     ),
+                 )
++                span.add_event(
++                    "Node created",
++                    {
++                        "inner_node.nid": node.nid,
++                        "inner_node.task.type": node.task_info.get("task_type", "N/A"),
++                        "inner_node.node_type": (
++                            node.node_type.name if node.node_type else "N/A"
++                        ),
++                        "inner_node.task.goal": node.task_info.get("goal", "N/A"),
++                    },
++                )
+                 nodes.append(node)
+-            id2node[task["id"]] = node
++                id2node[str(node.nid)] = node  # Use str(nid) for consistency
+ 
+             # Modify dependency for reasoning tasks, all reasoning tasks must dependent all previous reasoning tasks
+             sorted_nodes = sorted(nodes, key=lambda x: int(str(x.nid).split(".")[-1]))
+@@ -603,8 +746,14 @@ class AbstractNode(ABC):
+ 
+             # Process implicit dependencies (sequential order) between COMPOSITION tasks
+             prev_action_node = []
+-        for node in sorted(nodes, key=lambda x: int(str(x.nid).split(".")[-1])):
++            for node in sorted(
++                nodes, key=lambda x: int(str(x.nid).split(".")[-1])
++            ):  # Use sorted key
+                 if node.task_type_tag == "COMPOSITION":
++                    span.add_event(
++                        "Applying implicit COMPOSITION dependency",
++                        {"node.nid": node.nid},
++                    )
+                     for prev in prev_action_node:
+                         if prev.nid not in node.node_graph_info["parent_nodes"]:
+                             node.node_graph_info["parent_nodes"].append(prev.nid)
+@@ -615,31 +764,77 @@ class AbstractNode(ABC):
+             # Replace parent node ids with actual node objects
+             for node in nodes:
+                 # Filter out invalid dependencies
+-            node.node_graph_info["parent_nodes"] = [
+-                id2node[str(nid)]
+-                for nid in node.node_graph_info["parent_nodes"]
+-                if str(nid) in id2node
+-            ]
++                valid_parent_nodes = []
++                for nid in node.node_graph_info["parent_nodes"]:
++                    parent_node = id2node.get(str(nid))
++                    if parent_node:
++                        valid_parent_nodes.append(parent_node)
++                    # else: log warning potentially
++                node.node_graph_info["parent_nodes"] = valid_parent_nodes
++
+             # Build Graph
+             self.inner_graph.clear()
+             # Add nodes
+             for node in nodes:
+                 self.inner_graph.add_node(node)
++                span.add_event("Graph updated: add_node", {"node.nid": node.nid})
+             # Add edges
+             for node in nodes:
+                 for parent_node in node.node_graph_info["parent_nodes"]:
+                     self.inner_graph.add_edge(parent_node, node)
++                    span.add_event(
++                        "Graph updated: add_edge",
++                        {"parent.nid": parent_node.nid, "child.nid": node.nid},
++                    )
++
++            span.add_event("Calling graph.topological_sort")
+             self.inner_graph.topological_sort()
++            span.add_event(
++                "Graph updated: topological_sort",
++                {"result.queue.length": len(self.topological_task_queue)},
++            )
++
++            edge_count = sum(
++                len(children) for children in self.inner_graph.graph_edges.values()
++            )
++            span.add_event(
++                "Graph construction complete",
++                {
++                    "graph.nodes.count": len(self.inner_graph.node_list),
++                    "graph.edges.count": edge_count,
++                },
++            )
+         return
+ 
+     def do_action(self, action_name, memory, *args, **kwargs):
++        with tracer.start_as_current_span("Node.ExecuteAction") as span:
++            span.set_attribute("node.nid", self.nid)
++            span.set_attribute("action.name", action_name)
++
+             agent = self.agent_proxy.proxy(action_name)
++            agent_class_name = agent.__class__.__name__ if agent else "None"
++            agent_config_llm = self.config.get("action_mapping", {}).get(
++                action_name, ["Unknown"]
++            )[0]
++
++            span.set_attribute("agent.class", agent_class_name)
++            span.set_attribute("agent.config.llm", agent_config_llm)
++            span.add_event("Agent proxy obtained")
++
++            span.add_event("Calling agent.forward")
+             result = getattr(self, action_name)(agent, memory, *args, **kwargs)
++
++            result_summary = str(result)[:200]  # Basic summary
++            span.add_event("Agent forward finished", {"result.summary": result_summary})
++
+             # Saving information
++            span.add_event("Storing action result")
+             self.result[action_name] = {
+                 "result": result,
+                 "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+-            "agent": self.config["action_mapping"][action_name],
++                "agent": self.config["action_mapping"].get(
++                    action_name, "Unknown Agent"
++                ),
+             }
+ 
+             if action_name not in (
+@@ -652,15 +847,22 @@ class AbstractNode(ABC):
+                     action_name in ("execute", "final_aggregate")
+                     and self.task_type_tag == "RETRIEVAL"
+                 ):
++                    try:
++                        result_json = json.dumps(
++                            self.result[action_name], ensure_ascii=False, indent=4
++                        )
++                    except TypeError:
++                        result_json = str(
++                            self.result[action_name]
++                        )  # Fallback if not JSON serializable
++
+                     logger.info(
+                         "{} Action: {} Result: \n{}".format(
+-                        self.task_str(),
+-                        action_name,
+-                        json.dumps(
+-                            self.result[action_name], ensure_ascii=False, indent=4
+-                        ),
++                            self.task_str(), action_name, result_json
+                         )
+                     )
++
++            span.add_event("Action completed")
+             return result
+ 
+ 
+@@ -670,14 +872,14 @@ class RegularDummyNode(AbstractNode):
+     def get_node_final_info(self):
+         if self.node_type is NodeType.PLAN_NODE:
+             if self.status == TaskStatus.FINISH:
+-                return self.result["final_aggregate"]
++                return self.result.get("final_aggregate")  # Use get for safety
+             else:
+                 return None
+         elif self.node_type is NodeType.EXECUTE_NODE:
+             if self.status == TaskStatus.FINISH:
+-                return self.result[
++                return self.result.get(
+                     "execute"
+-                ]  # {"result": {"original": "xxx", "result": "xxx"}}
++                )  # {"result": {"original": "xxx", "result": "xxx"}}
+             else:
+                 return None
+         else:
+@@ -688,7 +890,10 @@ class RegularDummyNode(AbstractNode):
+         final_info = self.get_node_final_info()
+         if final_info is None:
+             return None
+-        return final_info["result"]
++        # Ensure nested structure exists before accessing
++        if isinstance(final_info, dict):
++            return final_info.get("result")
++        return None  # Or handle other cases if needed
+ 
+     @overrides
+     def define_status(self):
+@@ -752,23 +957,19 @@ class RegularDummyNode(AbstractNode):
+             TaskStatus.NOT_READY: [
+                 # When an external node enters the doing state, if there are no dependent nodes, it directly enters the ready state.
+                 (
+-                    lambda node, *args, **kwargs: node.node_graph_info[
+-                        "outer_node"
+-                    ].status
+-                    == TaskStatus.DOING
+-                    and len(node.node_graph_info["parent_nodes"]) == 0,
++                    lambda node, *args, **kwargs: node.node_graph_info.get("outer_node")
++                    and node.node_graph_info["outer_node"].status == TaskStatus.DOING
++                    and len(node.node_graph_info.get("parent_nodes", [])) == 0,
+                     TaskStatus.READY,
+                 ),
+                 # When the external node enters the doing state, if it has dependent nodes and all dependent nodes are finished, it enters the need_update state.
+                 (
+-                    lambda node, *args, **kwargs: node.node_graph_info[
+-                        "outer_node"
+-                    ].status
+-                    == TaskStatus.DOING
++                    lambda node, *args, **kwargs: node.node_graph_info.get("outer_node")
++                    and node.node_graph_info["outer_node"].status == TaskStatus.DOING
+                     and all(
+                         [
+                             parent.status == TaskStatus.FINISH
+-                            for parent in node.node_graph_info["parent_nodes"]
++                            for parent in node.node_graph_info.get("parent_nodes", [])
+                         ]
+                     ),
+                     TaskStatus.NEED_UPDATE,
+@@ -792,7 +993,16 @@ class RegularDummyNode(AbstractNode):
+         # Assemble data
+         # Agent's plan
+         result = agent.forward(self, memory, *args, **kwargs)
+-        self.raw_plan = result["result"]
++        # Ensure result and result["result"] exist and are lists
++        raw_plan_result = result.get("result") if isinstance(result, dict) else None
++        if not isinstance(raw_plan_result, list):
++            logger.warning(
++                f"Plan result is not a list: {raw_plan_result}. Setting raw_plan to empty list."
++            )
++            self.raw_plan = []
++        else:
++            self.raw_plan = raw_plan_result
++
+         # Parse the plan generated by the agent
+         self.plan2graph(self.raw_plan)
+         return result
