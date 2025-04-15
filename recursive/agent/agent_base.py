@@ -86,10 +86,6 @@ class Agent(ABC):
             {"response": {"content": content, "reason": reason, "raw_response": resp}}
         )
 
-        # Write log to file
-        with open(log_file, "w") as f:
-            yaml.safe_dump(log_data, f, default_flow_style=False, allow_unicode=True)
-
         assert isinstance(parse_arg_dict, dict)
         result = {"original": content, "result": content, "reason": reason}
 
@@ -103,8 +99,15 @@ class Agent(ABC):
         For example, if the LLM response contains <reasoning>Some analysis here</reasoning> and parse_arg_dict has {"thought": "reasoning"}, the function would extract "Some
         analysis here" and store it under result["thought"].
         """
+        log_data["structured_output"] = {}
         for key, value in parse_arg_dict.items():
             result[key] = parse_hierarchy_tags_result(content, value).strip()
+            log_data["structured_output"][key] = result[key]
+
+        # Write log to file
+        with open(log_file, "w") as f:
+            yaml.safe_dump(log_data, f, default_flow_style=False, allow_unicode=True)
+
         return result
 
 

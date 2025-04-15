@@ -1,0 +1,24 @@
+version: "3"
+
+services:
+  jaeger:
+    image: jaegertracing/jaeger:2.3.0
+    container_name: jaeger
+    ports:
+      - "4317:4317" # OTLP gRPC
+      - "4318:4318" # OTLP HTTP
+      - "16686:16686" # UI
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+      - COLLECTOR_OTLP_GRPC_HOST_PORT=0.0.0.0:4317
+      - COLLECTOR_OTLP_HTTP_HOST_PORT=0.0.0.0:4318
+    volumes:
+      - ./jaeger:/jaeger # Mount the jaeger directory to make the config files available
+    command: --config /jaeger/config.yml
+    networks:
+      - jaeger-net
+    restart: unless-stopped
+
+networks:
+  jaeger-net:
+    driver: bridge
