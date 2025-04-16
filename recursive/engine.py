@@ -257,9 +257,7 @@ class GraphRunEngine:
             ret = self.forward_one_step_not_parallel(
                 full_step=False,  # Note: full_step arg passed from here seems ignored in the call above
                 log_fn="logs/temp/{}".format(step),
-                nodes_json_file=(
-                    nodes_json_file if ret != "done" else None
-                ),  # Save nodes.json at each step except the last
+                nodes_json_file=nodes_json_file,  # Pass directly, internal method handles logic
                 *action_args,
                 **action_kwargs
             )
@@ -267,12 +265,8 @@ class GraphRunEngine:
                 self.save(save_folder)
 
             if ret == "done":
-                # Save final nodes.json if path provided and not already saved by forward_one_step_not_parallel
-                if nodes_json_file:
-                    with open(nodes_json_file, "w") as f:
-                        json.dump(
-                            self.root_node.to_json(), f, indent=4, ensure_ascii=False
-                        )
+                # Final save is handled inside forward_one_step_not_parallel when ret == "done"
+                # and also after the loop completes, so no extra save needed here.
                 break
 
             if (
