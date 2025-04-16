@@ -7,6 +7,7 @@ from recursive.memory import Memory
 import dill as pickle
 import json
 from loguru import logger
+from recursive.common.log_typing import log_typing
 
 
 class GraphRunEngine:
@@ -19,6 +20,7 @@ class GraphRunEngine:
     and managing memory context.
     """
 
+    @log_typing
     def __init__(self, root_node, memory_format, config):
         """
         Initialize the GraphRunEngine.
@@ -31,6 +33,7 @@ class GraphRunEngine:
         self.root_node = root_node
         self.memory = Memory(root_node, format=memory_format, config=config)
 
+    @log_typing
     def find_need_next_step_nodes(self, single=False):
         """
         Find nodes in the graph that are ready for the next action step.
@@ -67,6 +70,7 @@ class GraphRunEngine:
         else:
             return None
 
+    @log_typing
     def save(self, folder):
         """
         Save the current state of the engine and task graph.
@@ -94,6 +98,7 @@ class GraphRunEngine:
         with open(article_file, "w", encoding="utf-8") as file:
             file.write(self.memory.article)
 
+    @log_typing
     def load(self, folder):
         """
         Load the engine and task graph state from a saved folder.
@@ -109,6 +114,7 @@ class GraphRunEngine:
 
         self.memory = self.memory.load(folder)
 
+    @log_typing
     def forward_exam(self, node, verbose):
         """
         Recursively examine and update the status of a node and its descendants.
@@ -130,6 +136,7 @@ class GraphRunEngine:
                 self.forward_exam(inner_node, verbose)
             node.do_exam(verbose)
 
+    @log_typing
     def forward_one_step_not_parallel(
         self,
         full_step=False,
@@ -222,6 +229,7 @@ class GraphRunEngine:
         if verbose:
             display_plan(self.root_node.inner_graph)
 
+    @log_typing
     def forward_one_step_untill_done(
         self,
         full_step=False,

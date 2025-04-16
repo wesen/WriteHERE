@@ -11,6 +11,7 @@ from recursive.agent.base import agent_register, Agent
 from recursive.agent.prompts.base import prompt_register
 from recursive.executor.agent.claude_fc_react import SearchAgent
 from recursive.executor.action.bing_browser import BingBrowser
+from recursive.common.log_typing import log_typing
 
 
 @agent_register.register_module()
@@ -26,6 +27,7 @@ class UpdateAtomPlanningAgent(Agent):
     3.  **Planning**: If the task is not atomic, it invokes the planning process to generate subtasks.
     """
 
+    @log_typing
     @overrides
     def forward(self, node, memory, *args, **kwargs) -> Dict:
         """
@@ -283,6 +285,7 @@ class UpdateAtomPlanningAgent(Agent):
 
         return return_result
 
+    @log_typing
     @overrides
     def parse_result(self, agent_output, *args, **kwargs) -> list:
         """

@@ -9,6 +9,7 @@ from recursive.agent.prompts.base import prompt_register
 from recursive.agent.registry import agent_register
 from recursive.executor.action import ActionExecutor, BingBrowser
 from recursive.executor.agent import SearchAgent
+from recursive.common.log_typing import log_typing
 
 
 @agent_register.register_module()
@@ -26,6 +27,7 @@ class SimpleExecutor(Agent):
     For other tasks (like REASONING), it calls an LLM to get the result.
     """
 
+    @log_typing
     @overrides
     def forward(self, node, memory, *args, **kwargs) -> Dict:
         """
@@ -250,6 +252,7 @@ class SimpleExecutor(Agent):
 
         return llm_result
 
+    @log_typing
     @overrides
     def parse_result(self, agent_output, *args, **kwargs) -> Dict:
         """
@@ -271,6 +274,7 @@ class SimpleExecutor(Agent):
         # more complex parsing might be needed here based on context.
         return agent_output
 
+    @log_typing
     def search_merge(
         self, node, memory, search_results, to_run_outer_write_task, *args, **kwargs
     ) -> Dict:
