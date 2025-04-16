@@ -24,6 +24,8 @@ The planning process begins with the `UpdateAtomPlanningAgent`, which is respons
 ```python
 # recursive/agent/agents/regular.py:UpdateAtomPlanningAgent.forward (around line ~50)
 # Breakpoint 5: Task planning and decomposition
+import recursive.agent.helpers
+
 
 # --> SET BREAKPOINT HERE <-- (Start of forward)
 def forward(self, node, memory, *args, **kwargs):
@@ -33,7 +35,7 @@ def forward(self, node, memory, *args, **kwargs):
     prompt_kwargs = self._build_input(node, memory, *args, **kwargs)
 
     # --> SET BREAKPOINT HERE <-- (After LLM call)
-    llm_response = self.get_llm_output(prompt_kwargs, self.llm_args)
+    llm_response = recursive.agent.helpers.get_llm_output(prompt_kwargs, self.llm_args)
 
     # --> SET BREAKPOINT HERE <-- (After parsing)
     result = self._parse_output(llm_response, node, memory, *args, **kwargs)

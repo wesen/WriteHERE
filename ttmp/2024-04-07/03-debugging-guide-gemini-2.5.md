@@ -195,6 +195,8 @@ def proxy(self, action_name):
 ```python
 # recursive/agent/agent_base.py:AgentBase.forward (around line ~30)
 # Breakpoint 5: The main entry point for any agent's execution
+import recursive.agent.helpers
+
 
 # --> SET BREAKPOINT HERE <--
 def forward(self, node, memory, *args, **kwargs):
@@ -204,7 +206,7 @@ def forward(self, node, memory, *args, **kwargs):
 
     # 2. Get LLM Output (potentially cached)
     # --> SET BREAKPOINT HERE <-- (Before calling LLM/cache)
-    response = self.get_llm_output(prompt_kwargs, self.llm_args) # Step into this
+    response = recursive.agent.helpers.get_llm_output(prompt_kwargs, self.llm_args)  # Step into this
 
     # 3. Parse Output
     # --> SET BREAKPOINT HERE <-- (Before parsing output)

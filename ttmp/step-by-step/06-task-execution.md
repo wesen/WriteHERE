@@ -25,6 +25,8 @@ The execution process is handled by the `SimpleExcutor` agent, which is responsi
 ```python
 # recursive/agent/agents/regular.py:SimpleExcutor.forward (around line ~150)
 # Breakpoint 7: Actual task execution
+import recursive.agent.helpers
+
 
 # --> SET BREAKPOINT HERE <-- (Start of forward)
 def forward(self, node, memory, *args, **kwargs):
@@ -35,7 +37,7 @@ def forward(self, node, memory, *args, **kwargs):
     if task_type_tag in ("COMPOSITION", "REASONING"):
         # --> SET BREAKPOINT HERE <-- (Before LLM call for write/think)
         prompt_kwargs = self._build_input(node, memory, *args, **kwargs)
-        llm_response = self.get_llm_output(prompt_kwargs, self.llm_args)
+        llm_response = recursive.agent.helpers.get_llm_output(prompt_kwargs, self.llm_args)
         result = self._parse_output(llm_response, node, memory, *args, **kwargs)
     elif task_type_tag == "RETRIEVAL":
         if self.config["RETRIEVAL"]["execute"].get("react_agent", False):
@@ -181,6 +183,9 @@ def react_agent_run(self, node, memory, *args, **kwargs):
 After search tasks, results may be merged (synthesized) using the LLM to create a coherent summary:
 
 ```python
+import recursive.agent.helpers
+
+
 def search_merge(self, node, memory, search_results):
     # Create merge prompt
     prompt_kwargs = {
@@ -189,7 +194,7 @@ def search_merge(self, node, memory, search_results):
     }
 
     # Ask LLM to synthesize search results
-    llm_response = self.get_llm_output(prompt_kwargs, self.llm_args)
+    llm_response = recursive.agent.helpers.get_llm_output(prompt_kwargs, self.llm_args)
 
     # Parse and return
     return {

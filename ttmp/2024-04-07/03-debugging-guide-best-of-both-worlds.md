@@ -276,6 +276,8 @@ The proxy pattern allows the system to dynamically wire different agents to diff
 ```python
 # recursive/agent/agents/regular.py:UpdateAtomPlanningAgent.forward (around line ~50)
 # Breakpoint 5: Task planning and decomposition
+import recursive.agent.helpers
+
 
 # --> SET BREAKPOINT HERE <-- (Start of forward)
 def forward(self, node, memory, *args, **kwargs):
@@ -285,7 +287,7 @@ def forward(self, node, memory, *args, **kwargs):
     prompt_kwargs = self._build_input(node, memory, *args, **kwargs)
 
     # --> SET BREAKPOINT HERE <-- (After LLM call)
-    llm_response = self.get_llm_output(prompt_kwargs, self.llm_args)
+    llm_response = recursive.agent.helpers.get_llm_output(prompt_kwargs, self.llm_args)
 
     # --> SET BREAKPOINT HERE <-- (After parsing)
     result = self._parse_output(llm_response, node, memory, *args, **kwargs)
@@ -403,6 +405,8 @@ This is where the LLM's plan becomes an executable structure. Understanding this
 ```python
 # recursive/agent/agents/regular.py:SimpleExcutor.forward (around line ~150)
 # Breakpoint 7: Actual task execution
+import recursive.agent.helpers
+
 
 # --> SET BREAKPOINT HERE <-- (Start of forward)
 def forward(self, node, memory, *args, **kwargs):
@@ -413,7 +417,7 @@ def forward(self, node, memory, *args, **kwargs):
     if task_type_tag in ("COMPOSITION", "REASONING"):
         # --> SET BREAKPOINT HERE <-- (Before LLM call for write/think)
         prompt_kwargs = self._build_input(node, memory, *args, **kwargs)
-        llm_response = self.get_llm_output(prompt_kwargs, self.llm_args)
+        llm_response = recursive.agent.helpers.get_llm_output(prompt_kwargs, self.llm_args)
         result = self._parse_output(llm_response, node, memory, *args, **kwargs)
     elif task_type_tag == "RETRIEVAL":
         if self.config["RETRIEVAL"]["execute"].get("react_agent", False):
@@ -459,6 +463,8 @@ This is the "work" part of the system, where actual content is generated. Unders
 ```python
 # recursive/agent/agents/regular.py:FinalAggregateAgent.forward (around line ~300)
 # Breakpoint 8: Synthesizing results from subtasks
+import recursive.agent.helpers
+
 
 # --> SET BREAKPOINT HERE <-- (Start of forward)
 def forward(self, node, memory, *args, **kwargs):
@@ -469,7 +475,7 @@ def forward(self, node, memory, *args, **kwargs):
     prompt_kwargs = self._build_input(node, memory, inner_results=inner_results, *args, **kwargs)
 
     # --> SET BREAKPOINT HERE <-- (After LLM aggregation)
-    llm_response = self.get_llm_output(prompt_kwargs, self.llm_args)
+    llm_response = recursive.agent.helpers.get_llm_output(prompt_kwargs, self.llm_args)
     result = self._parse_output(llm_response, node, memory, *args, **kwargs)
     return result
 ```

@@ -5,12 +5,10 @@ from abc import ABC, abstractmethod
 from overrides import overrides
 import random
 import json
-from recursive.utils.registry import Register
 from recursive.executor.action.registry import executor_register, tool_register
-from recursive.executor.action import ActionExecutor
 from recursive.utils.file_io import make_mappings
 from recursive.llm.base import OpenAIApiProxy
-from recursive.utils.file_io import parse_hierarchy_tags_result
+from recursive.utils.parsing import parse_hierarchy_tags_result
 from copy import deepcopy
 from pprint import pprint
 from loguru import logger
@@ -18,8 +16,7 @@ from datetime import datetime
 import os
 import yaml
 
-
-agent_register = Register("agent_register")
+from recursive.agent.registry import agent_register
 
 
 class Agent(ABC):

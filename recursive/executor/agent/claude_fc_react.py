@@ -10,7 +10,7 @@ import json
 from recursive.executor.action.registry import executor_register
 from recursive.llm.base import OpenAIApiProxy
 from loguru import logger
-from recursive.utils.file_io import parse_hierarchy_tags_result
+from recursive.utils.parsing import parse_hierarchy_tags_result
 from recursive.agent.prompts.base import prompt_register
 
 # The Chinese prompts for ReAct
@@ -411,7 +411,7 @@ if __name__ == "__main__":
         },
     )
 
-    from recursive.agent.agent.base import DummyRandomPlanningAgent
+    from recursive.agent.base import DummyRandomPlanningAgent
 
     # from recursive.agent.prompts.search_think_write_push_r1.merge_search_result import MergeSearchResultZHDetailedWithOnlySummaryENR1V2
     from recursive.agent.prompts.report.merge_search_result import (

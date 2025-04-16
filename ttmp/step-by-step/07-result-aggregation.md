@@ -37,19 +37,21 @@ The aggregation process is handled by the `FinalAggregateAgent`, which is respon
 ```python
 # recursive/agent/agents/regular.py:FinalAggregateAgent.forward (around line ~300)
 # Breakpoint 8: Synthesizing results from subtasks
+import recursive.agent.helpers
+
 
 # --> SET BREAKPOINT HERE <-- (Start of forward)
 def forward(self, node, memory, *args, **kwargs):
-    # --> SET BREAKPOINT HERE <-- (After gathering inner results)
-    inner_results = memory.collect_inner_results(node)
+  # --> SET BREAKPOINT HERE <-- (After gathering inner results)
+  inner_results = memory.collect_inner_results(node)
 
-    # --> SET BREAKPOINT HERE <-- (After building the aggregation prompt)
-    prompt_kwargs = self._build_input(node, memory, inner_results=inner_results, *args, **kwargs)
+  # --> SET BREAKPOINT HERE <-- (After building the aggregation prompt)
+  prompt_kwargs = self._build_input(node, memory, inner_results=inner_results, *args, **kwargs)
 
-    # --> SET BREAKPOINT HERE <-- (After LLM aggregation)
-    llm_response = self.get_llm_output(prompt_kwargs, self.llm_args)
-    result = self._parse_output(llm_response, node, memory, *args, **kwargs)
-    return result
+  # --> SET BREAKPOINT HERE <-- (After LLM aggregation)
+  llm_response = recursive.agent.helpers.get_llm_output(prompt_kwargs, self.llm_args)
+  result = self._parse_output(llm_response, node, memory, *args, **kwargs)
+  return result
 ```
 
 **Values to examine:**

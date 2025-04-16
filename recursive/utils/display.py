@@ -1,5 +1,5 @@
 # coding: utf8
-from recursive.graph import NodeType, TaskStatus
+from recursive.common.enums import TaskStatus, NodeType
 import json
 from recursive.utils.file_io import enum_to_json
 from loguru import logger

@@ -192,17 +192,20 @@ The state machine is the backbone of WriteHERE's execution logic. Understanding 
 ```python
 # recursive/agent/agents/regular.py:UpdateAtomPlanningAgent.forward (line ~50)
 # Breakpoint 4: Task planning and decomposition
+import recursive.agent.helpers
+
+
 def forward(self, node, memory, *args, **kwargs):
-    # Entry point for planning
+   # Entry point for planning
 
-    # After prompt construction, before LLM call:
-    prompt_kwargs = self._build_input(node, memory, *args, **kwargs)
+   # After prompt construction, before LLM call:
+   prompt_kwargs = self._build_input(node, memory, *args, **kwargs)
 
-    # After LLM call, before parsing:
-    llm_response = self.get_llm_output(prompt_kwargs, llm_args)
+   # After LLM call, before parsing:
+   llm_response = recursive.agent.helpers.get_llm_output(prompt_kwargs, llm_args)
 
-    # After parsing the response:
-    result = self._parse_output(llm_response, node, memory, *args, **kwargs)
+   # After parsing the response:
+   result = self._parse_output(llm_response, node, memory, *args, **kwargs)
 ```
 
 **What happens here:**
@@ -279,19 +282,22 @@ This is where the LLM's plan becomes an executable structure. Understanding this
 ```python
 # recursive/agent/agents/regular.py:SimpleExcutor.forward (line ~150)
 # Breakpoint 6: Actual task execution
+import recursive.agent.helpers
+
+
 def forward(self, node, memory, *args, **kwargs):
-    # Determine task type:
-    task_type_tag = node.task_type_tag  # COMPOSITION, REASONING, or RETRIEVAL
+   # Determine task type:
+   task_type_tag = node.task_type_tag  # COMPOSITION, REASONING, or RETRIEVAL
 
-    # For COMPOSITION or REASONING tasks (after prompt construction):
-    prompt_kwargs = self._build_input(node, memory, *args, **kwargs)
-    llm_response = self.get_llm_output(prompt_kwargs, llm_args)
+   # For COMPOSITION or REASONING tasks (after prompt construction):
+   prompt_kwargs = self._build_input(node, memory, *args, **kwargs)
+   llm_response = recursive.agent.helpers.get_llm_output(prompt_kwargs, llm_args)
 
-    # For RETRIEVAL tasks (if configured to use react_agent):
-    # [Complex search logic may occur here]
+   # For RETRIEVAL tasks (if configured to use react_agent):
+   # [Complex search logic may occur here]
 
-    # After execution and parsing:
-    result = self._parse_output(llm_response, node, memory, *args, **kwargs)
+   # After execution and parsing:
+   result = self._parse_output(llm_response, node, memory, *args, **kwargs)
 ```
 
 **What happens here:**

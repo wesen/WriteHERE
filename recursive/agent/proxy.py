@@ -1,5 +1,5 @@
 from typing import Dict
-from recursive.agent.agent.base import agent_register
+from recursive.agent.registry import agent_register
 
 # from recursive.utils.file_io import make_mappings
 
@@ -14,11 +14,18 @@ class AgentProxy:
     def __init__(self, config: Dict):
         self.config = config
         self.action_mapping = config["action_mapping"]
+        self.agent_dict = {}
+
+    def get_agent(self, agent_type):
+        if agent_type not in self.agent_dict:
+            agent_cls = agent_register.module_dict[agent_type]
+            self.agent_dict[agent_type] = agent_cls(self.config)
+        return self.agent_dict[agent_type]
 
     def proxy(self, action, *args, **kwargs):
         agent_cls, input_kwargs = self.action_mapping[action]
         kwargs.update(input_kwargs)
-        agent = agent_register.module_dict[agent_cls](*args, **kwargs)
+        agent = self.get_agent(agent_cls)
         return agent
 
 
