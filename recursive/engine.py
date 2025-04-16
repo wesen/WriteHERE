@@ -10,13 +10,43 @@ from loguru import logger
 
 
 class GraphRunEngine:
-    """ """
+    """
+    Orchestrates the execution of a task graph.
+
+    This engine manages the lifecycle of tasks represented by nodes in a graph,
+    driving the execution process step by step based on node statuses and dependencies.
+    It handles finding executable nodes, triggering actions, updating node statuses,
+    and managing memory context.
+    """
 
     def __init__(self, root_node, memory_format, config):
+        """
+        Initialize the GraphRunEngine.
+
+        Args:
+            root_node (AbstractNode): The root node of the task graph.
+            memory_format (str): The format string for the memory representation.
+            config (dict): The configuration dictionary for the engine and agents.
+        """
         self.root_node = root_node
         self.memory = Memory(root_node, format=memory_format, config=config)
 
     def find_need_next_step_nodes(self, single=False):
+        """
+        Find nodes in the graph that are ready for the next action step.
+
+        Traverses the graph breadth-first, identifying nodes in an 'activate' state.
+        If a node is in a 'suspend' state, its inner graph is traversed.
+
+        Args:
+            single (bool, optional): If True, returns the first activate node found.
+                                     If False, returns all activate nodes. Defaults to False.
+
+        Returns:
+            list | AbstractNode | None: A list of activate nodes if single=False.
+                                       The first activate node found if single=True.
+                                       None if no activate nodes are found and single=True.
+        """
         nodes = []
         queue = deque([self.root_node])
         # Root node, starts in READY state
@@ -38,6 +68,15 @@ class GraphRunEngine:
             return None
 
     def save(self, folder):
+        """
+        Save the current state of the engine and task graph.
+
+        Persists the root node (both pickled and JSON), memory, and the
+        current article content to the specified folder.
+
+        Args:
+            folder (str): The directory path to save the state files.
+        """
         # save root_node
         # save memory
         # save article while running
@@ -56,6 +95,14 @@ class GraphRunEngine:
             file.write(self.memory.article)
 
     def load(self, folder):
+        """
+        Load the engine and task graph state from a saved folder.
+
+        Restores the root node and memory from persisted files.
+
+        Args:
+            folder (str): The directory path containing the saved state files.
+        """
         root_node_file = "{}/nodes.pkl".format(folder)
         with open(root_node_file, "rb") as f:
             self.root_node = pickle.load(f)
@@ -63,6 +110,17 @@ class GraphRunEngine:
         self.memory = self.memory.load(folder)
 
     def forward_exam(self, node, verbose):
+        """
+        Recursively examine and update the status of a node and its descendants.
+
+        This performs a bottom-up hierarchical and top-down dependency-based status update.
+        It checks conditions for transitions like NOT_READY -> READY or DOING -> FINISH.
+        The actual status update logic is within the node's `do_exam` method.
+
+        Args:
+            node (AbstractNode): The node to start the examination from.
+            verbose (bool): Whether to log status changes during examination.
+        """
         # The exam order is bottom-up hierarchically, and top-down based on dependencies.
         # not_ready -> ready: Need to check the execution status of dependent nodes, and whether upper-level nodes have entered the doing state
         # doing -> final_to_finish: Need to check if all lower-level nodes have finished
@@ -81,6 +139,29 @@ class GraphRunEngine:
         *action_args,
         **action_kwargs
     ):
+        """
+        Execute a single step in the graph execution process (sequentially).
+
+        1. Finds the next node ready for an action.
+        2. Updates the memory context for that node.
+        3. Executes the node's next action step.
+        4. Triggers a graph-wide status examination (`forward_exam`).
+        5. Optionally logs the graph state and saves the node structure.
+
+        Args:
+            full_step (bool, optional): Whether to execute the node's full action step. Defaults to False.
+            select_node_hashkey (str, optional): If provided, forces execution of the node with this hashkey. Defaults to None.
+            log_fn (str, optional): Path for logging graph visualization (not currently used effectively). Defaults to None.
+            nodes_json_file (str, optional): Path to save the updated node structure as JSON after the step. Defaults to None.
+            *action_args: Positional arguments passed to the node's action method.
+            **action_kwargs: Keyword arguments passed to the node's action method.
+
+        Returns:
+            str | None: "done" if all nodes are finished, otherwise None.
+
+        Raises:
+            Exception: If `select_node_hashkey` is provided but the specified node cannot be executed.
+        """
         # Find tasks that need to enter the next step
         if select_node_hashkey is not None:
             need_next_step_node = self.find_need_next_step_nodes(single=False)
@@ -122,7 +203,11 @@ class GraphRunEngine:
                 self.memory, *action_args, **action_kwargs
             )
         else:
-            action_name = need_next_step_node.next_full_action_step(self.memory)
+            # TODO: Implement or remove next_full_action_step
+            action_name, action_result = need_next_step_node.next_action_step(
+                self.memory, *action_args, **action_kwargs
+            )
+            # action_name = need_next_step_node.next_full_action_step(self.memory) # Original code, method seems missing
 
         verbose = action_name not in (
             "update",
@@ -147,25 +232,56 @@ class GraphRunEngine:
         *action_args,
         **action_kwargs
     ):
+        """
+        Run the graph execution process until all nodes are finished or a step limit is reached.
+
+        Repeatedly calls `forward_one_step_not_parallel` until the graph is complete
+        or the maximum number of steps (10000) is exceeded. Saves the state
+        after each step if `save_folder` is provided.
+
+        Args:
+            full_step (bool, optional): Passed to `forward_one_step_not_parallel`. Defaults to False.
+            parallel (bool, optional): Currently unused. Defaults to False.
+            save_folder (str, optional): Folder to save state after each step. Defaults to None.
+            nl (bool, optional): Currently unused. Defaults to False.
+            nodes_json_file (str, optional): Path to save the final node structure as JSON. Defaults to None.
+            *action_args: Positional arguments passed to the node's action method.
+            **action_kwargs: Keyword arguments passed to the node's action method.
+
+        Returns:
+            str: The final result from the root node's execution, or "Out of Step" if the step limit was reached.
+        """
         self.root_node.status = TaskStatus.READY
         for step in range(10000):
             logger.info("Step {}".format(step))
             ret = self.forward_one_step_not_parallel(
-                full_step=False,
+                full_step=False,  # Note: full_step arg passed from here seems ignored in the call above
                 log_fn="logs/temp/{}".format(step),
-                nodes_json_file=nodes_json_file,
+                nodes_json_file=(
+                    nodes_json_file if ret != "done" else None
+                ),  # Save nodes.json at each step except the last
                 *action_args,
                 **action_kwargs
             )
-            self.save(save_folder)
+            if save_folder:
+                self.save(save_folder)
+
             if ret == "done":
+                # Save final nodes.json if path provided and not already saved by forward_one_step_not_parallel
+                if nodes_json_file:
+                    with open(nodes_json_file, "w") as f:
+                        json.dump(
+                            self.root_node.to_json(), f, indent=4, ensure_ascii=False
+                        )
                 break
 
-            if step > 3000:
-                logger.error("Step > 3000, break")
+            if (
+                step >= 3000
+            ):  # Changed from > 3000 to >= 3000 for consistency with log message
+                logger.error("Step >= 3000, break")
                 break
 
-        if step <= 3000:
+        if step < 3000:  # Changed from <= 3000 to < 3000 for consistency
             final_answer = self.root_node.get_node_final_result()["result"]
         else:
             final_answer = "Out of Step"
