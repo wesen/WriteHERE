@@ -1,6 +1,6 @@
 # coding:utf8
 
-from typing import Dict, List, Any
+from typing import Dict, List
 from overrides import overrides
 import json
 
@@ -12,8 +12,6 @@ from recursive.agent.prompts.base import prompt_register
 from recursive.executor.agent.claude_fc_react import SearchAgent
 from recursive.executor.action.bing_browser import BingBrowser
 from recursive.common.log_typing import log_typing
-from recursive.memory import Memory
-from recursive.node.abstract import AbstractNode
 
 
 @agent_register.register_module()
@@ -31,9 +29,7 @@ class UpdateAtomPlanningAgent(Agent):
 
     @log_typing
     @overrides
-    def forward(
-        self, node: AbstractNode, memory: Memory, *args: Any, **kwargs: Any
-    ) -> Dict:
+    def forward(self, node, memory, *args, **kwargs) -> Dict:
         """
         Execute the atomicity check and potential planning for a node.
 
@@ -73,9 +69,7 @@ class UpdateAtomPlanningAgent(Agent):
         #     }
         # }
 
-        return_result: Dict = {}
-        plan_result: List = []
-
+        return_result = {}
         # Check Atom
         task_type = node.task_info.get("task_type", "")
         if (
@@ -95,7 +89,7 @@ class UpdateAtomPlanningAgent(Agent):
             # --- Case 1: Forced Atomicity ---
             if not "prompt_version" in inner_kwargs:
                 # No update prompt defined, simply return empty plan
-                plan_result = []
+                plan_result: List[Dict] = []
                 return_result["result"] = plan_result
             else:
                 # Update goal potentially, but still atomic
@@ -149,7 +143,7 @@ class UpdateAtomPlanningAgent(Agent):
             return_result["result"] = plan_result
             logger.info(
                 "Node: {}, Layer={}, >= force_atom_layer ({}), forcing atomicity.".format(
-                    node.nid,  # Use nid for brevity
+                    node,  # Consider using node.nid or task_str() for brevity
                     node.node_graph_info["layer"],
                     inner_kwargs["force_atom_layer"],
                 )
@@ -159,7 +153,7 @@ class UpdateAtomPlanningAgent(Agent):
             succ = False
             retry_cnt = 0
             MAX_RETRIES = 10  # Define as constant
-            atom_llm_result: Dict = {}  # Initialize
+            atom_llm_result = {}  # Initialize
             # Atomicity Check Loop
             while not succ and retry_cnt < MAX_RETRIES:
                 atom_llm_result = get_llm_output(
@@ -229,7 +223,7 @@ class UpdateAtomPlanningAgent(Agent):
                 succ = False
                 retry_cnt = 0
                 plan_result = []
-                plan_llm_result: Dict = {}  # Initialize
+                plan_llm_result = {}  # Initialize
                 # Planning Loop
                 while not succ and retry_cnt < MAX_RETRIES:
                     plan_llm_result = get_llm_output(
@@ -293,7 +287,7 @@ class UpdateAtomPlanningAgent(Agent):
 
     @log_typing
     @overrides
-    def parse_result(self, agent_output: str, *args: Any, **kwargs: Any) -> List:
+    def parse_result(self, agent_output, *args, **kwargs) -> list:
         """
         Parse the LLM output string containing the plan into a list of subtasks.
 
@@ -348,12 +342,7 @@ class UpdateAtomPlanningAgent(Agent):
                     )
                 )
                 return []
-            # Ensure the returned list actually contains dictionaries or expected subtask format
-            # Basic check: return the list if it's non-empty, otherwise return empty list
-            # More specific validation could be added here if the subtask structure is known
-            sub_tasks = parsed_json["sub_tasks"]
-            return sub_tasks if isinstance(sub_tasks, list) else []
-
+            return parsed_json["sub_tasks"]
         except json.JSONDecodeError as e:
             logger.error(
                 "Failed to decode planning JSON: {}. Input: {}".format(e, agent_output)

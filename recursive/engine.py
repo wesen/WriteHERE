@@ -1,16 +1,15 @@
 # coding:utf8
 
 from collections import deque
-from typing import Dict, List, Optional, Union, Any
-
 from recursive.common.enums import TaskStatus
 from recursive.utils.display import display_plan
 from recursive.memory import Memory
-from recursive.node.abstract import AbstractNode
 import dill as pickle
 import json
 from loguru import logger
 from recursive.common.log_typing import log_typing
+from typing import Any, Optional, List, Dict, Union
+from recursive.node.abstract import AbstractNode
 
 
 class GraphRunEngine:
@@ -25,7 +24,7 @@ class GraphRunEngine:
 
     @log_typing
     def __init__(
-        self, root_node: AbstractNode, memory_format: str, config: Dict
+        self, root_node: AbstractNode, memory_format: str, config: dict
     ) -> None:
         """
         Initialize the GraphRunEngine.
@@ -35,13 +34,13 @@ class GraphRunEngine:
             memory_format (str): The format string for the memory representation.
             config (dict): The configuration dictionary for the engine and agents.
         """
-        self.root_node: AbstractNode = root_node
-        self.memory: Memory = Memory(root_node, format=memory_format, config=config)
+        self.root_node = root_node
+        self.memory = Memory(root_node, format=memory_format, config=config)
 
     @log_typing
     def find_need_next_step_nodes(
         self, single: bool = False
-    ) -> Optional[Union[List[AbstractNode], AbstractNode]]:
+    ) -> Union[List[AbstractNode], AbstractNode, None]:
         """
         Find nodes in the graph that are ready for the next action step.
 
@@ -57,8 +56,8 @@ class GraphRunEngine:
                                        The first activate node found if single=True.
                                        None if no activate nodes are found and single=True.
         """
-        nodes: List[AbstractNode] = []
-        queue: deque[AbstractNode] = deque([self.root_node])
+        nodes = []
+        queue = deque([self.root_node])
         # Root node, starts in READY state
         while len(queue) > 0:
             # logger.info("in find_need_next_step_nodes, queue: {}".format(queue))
@@ -151,7 +150,7 @@ class GraphRunEngine:
         log_fn: Optional[str] = None,
         nodes_json_file: Optional[str] = None,
         *action_args: Any,
-        **action_kwargs: Any,
+        **action_kwargs: Any
     ) -> Optional[str]:
         """
         Execute a single step in the graph execution process (sequentially).
@@ -177,29 +176,20 @@ class GraphRunEngine:
             Exception: If `select_node_hashkey` is provided but the specified node cannot be executed.
         """
         # Find tasks that need to enter the next step
-        need_next_step_node: Optional[Union[List[AbstractNode], AbstractNode]]
         if select_node_hashkey is not None:
-            found_nodes = self.find_need_next_step_nodes(single=False)
-            if found_nodes:
-                for node in found_nodes:
-                    if node.hashkey == select_node_hashkey:
-                        need_next_step_node = node
-                        break
-                else:
-                    raise Exception(
-                        "Error, the select node {} can not be executed".format(
-                            select_node_hashkey
-                        )
-                    )
+            need_next_step_node = self.find_need_next_step_nodes(single=False)
+            for node in need_next_step_node:
+                if node.hashkey == select_node_hashkey:
+                    break
             else:
                 raise Exception(
                     "Error, the select node {} can not be executed".format(
                         select_node_hashkey
                     )
                 )
+            need_next_step_node = node
         else:
             need_next_step_node = self.find_need_next_step_nodes(single=True)
-
         if need_next_step_node is None:
             logger.info("All Done")
             # display_graph(self.root_node.inner_graph, fn=log_fn)
@@ -221,8 +211,6 @@ class GraphRunEngine:
             with open(nodes_json_file, "w") as f:
                 json.dump(self.root_node.to_json(), f, indent=4, ensure_ascii=False)
 
-        action_name: str = ""
-        action_result: Any = None
         if not full_step:
             action_name, action_result = need_next_step_node.next_action_step(
                 self.memory, *action_args, **action_kwargs
@@ -234,7 +222,7 @@ class GraphRunEngine:
             )
             # action_name = need_next_step_node.next_full_action_step(self.memory) # Original code, method seems missing
 
-        verbose: bool = action_name not in (
+        verbose = action_name not in (
             "update",
             "prior_reflect",
             "planning_post_reflect",
@@ -246,7 +234,8 @@ class GraphRunEngine:
 
         if verbose:
             display_plan(self.root_node.inner_graph)
-        return None  # Explicitly return None if not done
+
+        return None
 
     @log_typing
     def forward_one_step_untill_done(
@@ -257,7 +246,7 @@ class GraphRunEngine:
         nl: bool = False,
         nodes_json_file: Optional[str] = None,
         *action_args: Any,
-        **action_kwargs: Any,
+        **action_kwargs: Any
     ) -> str:
         """
         Run the graph execution process until all nodes are finished or a step limit is reached.
@@ -279,8 +268,6 @@ class GraphRunEngine:
             str: The final result from the root node's execution, or "Out of Step" if the step limit was reached.
         """
         self.root_node.status = TaskStatus.READY
-        step: int = 0
-        final_answer: str = ""
         for step in range(10000):
             logger.info("Step {}".format(step))
             ret = self.forward_one_step_not_parallel(
@@ -288,7 +275,7 @@ class GraphRunEngine:
                 log_fn="logs/temp/{}".format(step),
                 nodes_json_file=nodes_json_file,  # Pass directly, internal method handles logic
                 *action_args,
-                **action_kwargs,
+                **action_kwargs
             )
             if save_folder:
                 self.save(save_folder)
@@ -305,15 +292,7 @@ class GraphRunEngine:
                 break
 
         if step < 3000:  # Changed from <= 3000 to < 3000 for consistency
-            # Assuming get_node_final_result returns a Dict with a 'result' key
-            final_result_data: Optional[Dict[str, Any]] = (
-                self.root_node.get_node_final_result()
-            )
-            if final_result_data and isinstance(final_result_data.get("result"), str):
-                final_answer = final_result_data["result"]
-            else:
-                final_answer = "Error: Could not retrieve final result."
-                logger.error(f"Unexpected final result format: {final_result_data}")
+            final_answer = self.root_node.get_node_final_result()["result"]
         else:
             final_answer = "Out of Step"
         logger.info("Final Result: \n{}".format(final_answer))

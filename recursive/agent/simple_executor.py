@@ -1,4 +1,4 @@
-from typing import Dict, Any
+from typing import Dict
 
 from loguru import logger
 from overrides import overrides
@@ -10,8 +10,6 @@ from recursive.agent.registry import agent_register
 from recursive.executor.action import ActionExecutor, BingBrowser
 from recursive.executor.agent import SearchAgent
 from recursive.common.log_typing import log_typing
-from recursive.memory import Memory
-from recursive.node.abstract import AbstractNode
 
 
 @agent_register.register_module()
@@ -31,9 +29,7 @@ class SimpleExecutor(Agent):
 
     @log_typing
     @overrides
-    def forward(
-        self, node: AbstractNode, memory: Memory, *args: Any, **kwargs: Any
-    ) -> Dict:
+    def forward(self, node, memory, *args, **kwargs) -> Dict:
         """
         Execute the task represented by the node.
 
@@ -84,10 +80,8 @@ class SimpleExecutor(Agent):
         #     "llm_merge": False,              # If True, call search_merge after ReAct
         #     "temperature": T                 # Optional temperature override for ReAct LLM
         # }
-        llm_result: Dict = {}  # Initialize llm_result
         task_type = node.task_type_tag
         inner_kwargs = node.config[task_type]["execute"]
-
         if task_type == "RETRIEVAL" and inner_kwargs.get("react_agent", False):
             # --- Execute RETRIEVAL using ReAct SearchAgent ---
             react_agent = SearchAgent(
@@ -169,56 +163,46 @@ class SimpleExecutor(Agent):
 
             # Process ReAct agent results
             execute_result = []
-            if "result" in react_agent_result:  # Check if result exists
-                for turn_result in react_agent_result["result"]:
-                    if "web_pages" in turn_result:  # Check if web_pages exists
-                        for page in turn_result["web_pages"]:
-                            memory.add_search_result(
-                                page
-                            )  # Add results to global memory
-                            if not inner_kwargs.get("only_use_react_summary", False):
-                                # Include formatted individual page summaries if not configured otherwise
-                                execute_result.append(
-                                    FORMAT_STRING_TEMPLATE.format(
-                                        index=page.get(
-                                            "global_index", "N/A"
-                                        ),  # Use .get for safety
-                                        title=page.get("title", "N/A"),
-                                        url=page.get("url", "N/A"),
-                                        publish_time=page.get("publish_time", "N/A"),
-                                        content=page.get("summary", "N/A"),
-                                    )
-                                )
-                    # Always include the agent's turn observation (summary of pages in that turn)
-                    if "observation" in turn_result:  # Check if observation exists
+            for turn_result in react_agent_result["result"]:
+                for page in turn_result["web_pages"]:
+                    memory.add_search_result(page)  # Add results to global memory
+                    if not inner_kwargs.get("only_use_react_summary", False):
+                        # Include formatted individual page summaries if not configured otherwise
                         execute_result.append(
-                            "<web_pages_short_summary>\n{}\n</web_pages_short_summary>".format(
-                                turn_result["observation"]
+                            FORMAT_STRING_TEMPLATE.format(
+                                index=page["global_index"],
+                                title=page["title"],
+                                url=page["url"],
+                                publish_time=page["publish_time"],
+                                content=page["summary"],
                             )
                         )
-            execute_result_str = "\n\n".join(execute_result)
+                # Always include the agent's turn observation (summary of pages in that turn)
+                execute_result.append(
+                    "<web_pages_short_summary>\n{}\n</web_pages_short_summary>".format(
+                        turn_result["observation"]
+                    )
+                )
+            execute_result = "\n\n".join(execute_result)
 
             # Optionally merge results using another LLM call
             if inner_kwargs.get("llm_merge", False):
                 merge_result = self.search_merge(
-                    node, memory, execute_result_str, to_run_outer_write_task
+                    node, memory, execute_result, to_run_outer_write_task
                 )
                 llm_result = {
-                    "ori": react_agent_result.get(
-                        "ori", "N/A"
-                    ),  # Keep original ReAct trace
-                    "agent_result": execute_result_str,  # Keep formatted pre-merge results
+                    "ori": react_agent_result["ori"],  # Keep original ReAct trace
+                    "agent_result": execute_result,  # Keep formatted pre-merge results
                     "merge_result": merge_result,  # Keep raw merge LLM output
-                    "result": merge_result.get(
-                        "result",
-                        execute_result_str,  # Fallback to pre-merge if merge fails
-                    ),  # Final result is the merged content
+                    "result": merge_result[
+                        "result"
+                    ],  # Final result is the merged content
                 }
             else:
                 # If no merge, the formatted search results are the final result
                 llm_result = {
-                    "ori": react_agent_result.get("ori", "N/A"),
-                    "result": execute_result_str,
+                    "ori": react_agent_result["ori"],
+                    "result": execute_result,
                 }
         else:
             # --- Execute other task types (COMPOSITION, REASONING) or non-ReAct RETRIEVAL ---
@@ -270,7 +254,7 @@ class SimpleExecutor(Agent):
 
     @log_typing
     @overrides
-    def parse_result(self, agent_output: Any, *args: Any, **kwargs: Any) -> Any:
+    def parse_result(self, agent_output, *args, **kwargs) -> Dict:
         """
         Parse the raw output from the agent's execution step.
 
@@ -292,13 +276,7 @@ class SimpleExecutor(Agent):
 
     @log_typing
     def search_merge(
-        self,
-        node: AbstractNode,
-        memory: Memory,
-        search_results: str,
-        to_run_outer_write_task: str,
-        *args: Any,
-        **kwargs: Any
+        self, node, memory, search_results, to_run_outer_write_task, *args, **kwargs
     ) -> Dict:
         """
         Merge and summarize search results using an LLM call.
@@ -377,7 +355,7 @@ class SimpleExecutor(Agent):
         succ = False
         retry_cnt = 0
         MAX_RETRIES = 50  # Consider making this configurable
-        llm_result: Dict = {}  # Initialize
+        llm_result = {}  # Initialize
         while not succ and retry_cnt < MAX_RETRIES:
             llm_result = self.call_llm(
                 system_message=system_message,
