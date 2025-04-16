@@ -60,6 +60,6 @@ Please complete the analysis task **{to_run_task}** follow the instruction in # 
 
 
 if __name__ == "__main__":
-    from recursive.agent.base import DummyRandomPlanningAgent
+    from recursive.agent.dummies import DummyRandomPlanningAgent
 
     agent = DummyRandomPlanningAgent()

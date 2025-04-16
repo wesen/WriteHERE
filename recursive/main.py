@@ -4,6 +4,12 @@ from datetime import datetime
 from recursive.report_writing import report_writing
 from recursive.story_writing import story_writing
 
+# import agents to register them
+import recursive.agent.dummies
+import recursive.agent.update_atom_planning
+import recursive.agent.simple_executor
+import recursive.agent.final_aggregate
+
 
 def define_args():
     parser = argparse.ArgumentParser()

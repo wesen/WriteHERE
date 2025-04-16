@@ -7,7 +7,8 @@ import json
 from recursive.agent.helpers import get_llm_output, extract_json_content
 from recursive.executor.action import ActionExecutor
 from loguru import logger
-from recursive.agent.base import agent_register, Agent
+from recursive.agent.registry import agent_register
+from recursive.agent.base import Agent
 from recursive.agent.prompts.base import prompt_register
 from recursive.executor.agent.claude_fc_react import SearchAgent
 from recursive.executor.action.bing_browser import BingBrowser

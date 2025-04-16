@@ -94,6 +94,6 @@ Complete this round (round {to_run_turn}) according to requirements
 
 
 if __name__ == "__main__":
-    from recursive.agent.base import DummyRandomPlanningAgent
+    from recursive.agent.dummies import DummyRandomPlanningAgent
 
     agent = DummyRandomPlanningAgent()

@@ -411,7 +411,7 @@ if __name__ == "__main__":
         },
     )
 
-    from recursive.agent.base import DummyRandomPlanningAgent
+    from recursive.agent.dummies import DummyRandomPlanningAgent
 
     # from recursive.agent.prompts.search_think_write_push_r1.merge_search_result import MergeSearchResultZHDetailedWithOnlySummaryENR1V2
     from recursive.agent.prompts.report.merge_search_result import (
