@@ -3,7 +3,6 @@ import uuid
 from abc import ABC, abstractmethod
 from copy import deepcopy
 from datetime import datetime
-from typing import Any, Callable, Optional, List, Dict, Union, Tuple, TYPE_CHECKING
 
 from loguru import logger
 
@@ -11,13 +10,10 @@ from recursive.agent.proxy import AgentProxy
 from recursive.common.enums import TaskStatus, NodeType
 from recursive.graph import Graph
 
-if TYPE_CHECKING:
-    from recursive.memory import Memory
-
 
 class AbstractNode(ABC):
     @staticmethod
-    def process_all_node_to_node_str(obj: Any) -> Any:
+    def process_all_node_to_node_str(obj):
         """
         Recursively converts all node objects in a nested structure to their string representations.
 
@@ -30,7 +26,6 @@ class AbstractNode(ABC):
         Returns:
             The processed object with all nodes converted to strings.
         """
-        str_obj: Any = None
         if isinstance(obj, dict):
             str_obj = {}
             for k, v in obj.items():
@@ -45,14 +40,7 @@ class AbstractNode(ABC):
             str_obj = str(obj)
         return str_obj
 
-    def __init__(
-        self,
-        config: dict,
-        nid: Any,
-        node_graph_info: dict,
-        task_info: dict,
-        node_type: Optional[NodeType] = None,
-    ) -> None:
+    def __init__(self, config, nid, node_graph_info, task_info, node_type=None):
         """
         Initialize a new AbstractNode instance.
 
@@ -84,21 +72,21 @@ class AbstractNode(ABC):
         self.agent_proxy = AgentProxy(config)
 
         # Result
-        self.result: Dict[str, Any] = {}
+        self.result = {}
 
         # -------- States -------
-        self.status_list: Dict[str, List[TaskStatus]] = {"silence": [], "suspend": [], "activate": []}
+        self.status_list = {"silence": [], "suspend": [], "activate": []}
 
         # Status-Condtion-Action-NextStatus mapping
-        self.status_action_mapping: Dict[TaskStatus, List[Tuple[Callable, str, TaskStatus]]] = {}
+        self.status_action_mapping = {}
         # Status-Condtion-NextStatus mapping
-        self.status_exam_mapping: Dict[TaskStatus, List[Tuple[Callable, TaskStatus]]] = {}
+        self.status_exam_mapping = {}
 
         self.define_status()
         self.check_status_valid()
 
     @property
-    def required_task_info_keys(self) -> List[str]:
+    def required_task_info_keys(self):
         """
         Get the required keys for the task info based on the task type.
 
@@ -109,7 +97,7 @@ class AbstractNode(ABC):
         return require_keys
 
     @property
-    def task_type_tag(self) -> str:
+    def task_type_tag(self):
         """
         Get the task type tag for this node.
 
@@ -122,7 +110,7 @@ class AbstractNode(ABC):
         return self.config["tag2task_type"][self.task_info["task_type"]]
 
     @abstractmethod
-    def define_status(self) -> None:
+    def define_status(self):
         """
         Define the possible states and transitions for this node.
 
@@ -134,7 +122,7 @@ class AbstractNode(ABC):
         return
 
     @abstractmethod
-    def get_node_final_info(self) -> Optional[Dict[str, Any]]:
+    def get_node_final_info(self):
         """
         Get the final information about this node after execution.
 
@@ -144,7 +132,7 @@ class AbstractNode(ABC):
         pass
 
     @abstractmethod
-    def get_node_final_result(self) -> Any:
+    def get_node_final_result(self):
         """
         Get the final result of this node's execution.
 
@@ -153,7 +141,7 @@ class AbstractNode(ABC):
         """
         pass
 
-    def get_outer_write_task(self) -> Optional["AbstractNode"]:
+    def get_outer_write_task(self):
         """
         Get the outer writing task that contains this node.
 
@@ -170,7 +158,7 @@ class AbstractNode(ABC):
         return outer_node
 
     @property
-    def is_atom(self) -> bool:
+    def is_atom(self):
         """
         Check if this node represents an atomic task.
 
@@ -184,7 +172,7 @@ class AbstractNode(ABC):
             len(self.node_graph_info["outer_node"].topological_task_queue) == 1
         )
 
-    def get_direct_depend_write_task(self) -> Optional[List["AbstractNode"]]:
+    def get_direct_depend_write_task(self):
         """
         Get all COMPOSITION tasks that directly depend on this node.
 
@@ -208,7 +196,7 @@ class AbstractNode(ABC):
                         depend_write_tasks.append(node)
         return depend_write_tasks
 
-    def get_all_previous_writing_plan(self) -> str:
+    def get_all_previous_writing_plan(self):
         """
         Get a hierarchical representation of all writing tasks in the graph.
 
@@ -270,7 +258,7 @@ class AbstractNode(ABC):
             all_tasks = all_tasks[1:]
         return "\n".join(all_tasks)
 
-    def get_all_layer_plan(self) -> Dict[str, Any]:
+    def get_all_layer_plan(self):
         """
         Get a JSON representation of the task plan up to a specific layer.
 
@@ -314,7 +302,7 @@ class AbstractNode(ABC):
         plan_json = inner(self.node_graph_info["root_node"])
         return plan_json
 
-    def get_all_lt_layer_plan(self) -> str:
+    def get_all_lt_layer_plan(self):
         """
         Get a string representation of all tasks up to this node's layer.
 
@@ -363,7 +351,7 @@ class AbstractNode(ABC):
         inner(self.node_graph_info["root_node"], "")
         return "\n".join(plan_string)
 
-    def check_status_valid(self) -> bool:
+    def check_status_valid(self):
         """
         Validate that the node's status definitions are complete and consistent.
 
@@ -416,9 +404,7 @@ class AbstractNode(ABC):
 
         return True
 
-    def next_action_step(
-        self, memory: "Memory", *args: Any, **kwargs: Any
-    ) -> Tuple[str, Any]:
+    def next_action_step(self, memory, *args, **kwargs):
         """
         Execute the next action for this node based on its current status.
 
@@ -464,7 +450,7 @@ class AbstractNode(ABC):
 
         return action_name, result
 
-    def do_exam(self, verbose: bool) -> None:
+    def do_exam(self, verbose):
         """
         Examine the node's status and update it based on defined conditions.
 
@@ -496,7 +482,7 @@ class AbstractNode(ABC):
                 self.status = next_status
                 break
 
-    def task_str(self) -> str:
+    def task_str(self):
         """
         Get a string representation of this task node.
 
@@ -533,7 +519,7 @@ class AbstractNode(ABC):
             self.status.name,
         )
 
-    def __str__(self) -> str:
+    def __str__(self):
         """
         Get a string representation of this node.
 
@@ -542,7 +528,7 @@ class AbstractNode(ABC):
         """
         return self.task_str()
 
-    def __repr__(self) -> str:
+    def __repr__(self):
         """
         Get a string representation of this node for debugging.
 
@@ -551,7 +537,7 @@ class AbstractNode(ABC):
         """
         return self.__str__()
 
-    def to_json(self) -> Dict[str, Any]:
+    def to_json(self):
         """
         Convert this node to a JSON-serializable dictionary.
 
@@ -575,7 +561,7 @@ class AbstractNode(ABC):
                 self.node_graph_info
             ),
             "raw_plan": self.raw_plan,
-            "node_type": self.node_type.name if self.node_type else None,
+            "node_type": self.node_type.name,
             "status": self.status.name,
             "result": self.result,
             "inner_graph": self.inner_graph.to_json(),
@@ -583,7 +569,7 @@ class AbstractNode(ABC):
         return obj
 
     @property
-    def topological_task_queue(self) -> List["AbstractNode"]:
+    def topological_task_queue(self):
         """
         Get the topologically sorted queue of tasks in this node's inner graph.
 
@@ -593,7 +579,7 @@ class AbstractNode(ABC):
         return self.inner_graph.topological_task_queue
 
     @property
-    def is_silence(self) -> bool:
+    def is_silence(self):
         """
         Check if this node is in a silence state.
 
@@ -603,7 +589,7 @@ class AbstractNode(ABC):
         return self.status in self.status_list["silence"]
 
     @property
-    def is_suspend(self) -> bool:
+    def is_suspend(self):
         """
         Check if this node is in a suspend state.
 
@@ -613,7 +599,7 @@ class AbstractNode(ABC):
         return self.status in self.status_list["suspend"]
 
     @property
-    def is_activate(self) -> bool:
+    def is_activate(self):
         """
         Check if this node is in an activate state.
 
@@ -622,7 +608,7 @@ class AbstractNode(ABC):
         """
         return self.status in self.status_list["activate"]
 
-    def plan2graph(self, raw_plan: List[Dict[str, Any]]) -> None:
+    def plan2graph(self, raw_plan):
         """
         Convert a raw planning result into a task graph.
 
@@ -722,7 +708,7 @@ class AbstractNode(ABC):
                 )
 
         # Process implicit dependencies (sequential order) between COMPOSITION tasks
-        prev_action_node: List[AbstractNode] = []
+        prev_action_node = []
         for node in sorted(nodes, key=lambda x: int(str(x.nid).split(".")[-1])):
             if node.task_type_tag == "COMPOSITION":
                 for prev in prev_action_node:
@@ -752,9 +738,7 @@ class AbstractNode(ABC):
         self.inner_graph.topological_sort()
         return
 
-    def do_action(
-        self, action_name: str, memory: "Memory", *args: Any, **kwargs: Any
-    ) -> Any:
+    def do_action(self, action_name, memory, *args, **kwargs):
         """
         Execute an action on this node.
 
