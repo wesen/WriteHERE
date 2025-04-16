@@ -1,4 +1,5 @@
 import json
+import re
 from copy import deepcopy
 
 from recursive.agent.prompts.base import prompt_register
@@ -136,3 +137,11 @@ def get_llm_output(
         **inner_kwargs.get("llm_args", {})
     )
     return llm_result
+
+
+def extract_json_content(text):
+    pattern = r"```json\s*(.*?)\s*```"
+    match = re.search(pattern, text, re.DOTALL)
+    if match:
+        return match.group(1).strip()
+    return None

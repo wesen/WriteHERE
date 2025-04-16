@@ -14,6 +14,18 @@ from recursive.graph import Graph
 class AbstractNode(ABC):
     @staticmethod
     def process_all_node_to_node_str(obj):
+        """
+        Recursively converts all node objects in a nested structure to their string representations.
+
+        This method traverses dictionaries, lists, and node objects, converting each node to its string
+        representation while preserving the structure of the data.
+
+        Args:
+            obj: The object to process. Can be a dictionary, list, AbstractNode, or any other type.
+
+        Returns:
+            The processed object with all nodes converted to strings.
+        """
         if isinstance(obj, dict):
             str_obj = {}
             for k, v in obj.items():
@@ -30,17 +42,23 @@ class AbstractNode(ABC):
 
     def __init__(self, config, nid, node_graph_info, task_info, node_type=None):
         """
-        node_graph_info:
-            - outer_node: The outer layer node to which it belongs
-            - root_node: The root node of the entire nested task
-            - parent_nodes: Dependent nodes of this node in the current Graph
-            - layer: The layer number where this node is located, root is 0
-        task_info:
-            - goal: Task objective
-            - inclusion
-            - exclusion
-            - verify_standard
-            - task_type
+        Initialize a new AbstractNode instance.
+
+        Args:
+            config (dict): Configuration dictionary containing system settings and parameters.
+            nid: Node identifier.
+            node_graph_info (dict): Information about the node's position and relationships in the graph:
+                - outer_node: The outer layer node to which it belongs
+                - root_node: The root node of the entire nested task
+                - parent_nodes: Dependent nodes of this node in the current Graph
+                - layer: The layer number where this node is located, root is 0
+            task_info (dict): Information about the task this node represents:
+                - goal: Task objective
+                - inclusion: What to include
+                - exclusion: What to exclude
+                - verify_standard: Verification criteria
+                - task_type: Type of task (COMPOSITION, REASONING, RETRIEVAL)
+            node_type (NodeType, optional): Type of the node (PLAN_NODE or EXECUTE_NODE).
         """
         self.config = config
         self.nid = nid
@@ -69,29 +87,68 @@ class AbstractNode(ABC):
 
     @property
     def required_task_info_keys(self):
+        """
+        Get the required keys for the task info based on the task type.
+
+        Returns:
+            list: List of required keys for the task info dictionary.
+        """
         require_keys = self.config["require_keys"][self.task_type_tag]
         return require_keys
 
     @property
     def task_type_tag(self):
+        """
+        Get the task type tag for this node.
+
+        Returns:
+            str: The task type tag (e.g., "COMPOSITION", "REASONING", "RETRIEVAL").
+                Returns "GENERAL" if no_type is set in config.
+        """
         if self.config.get("no_type", False):
             return "GENERAL"
         return self.config["tag2task_type"][self.task_info["task_type"]]
 
-    # ----- States Definitions -------
     @abstractmethod
     def define_status(self):
+        """
+        Define the possible states and transitions for this node.
+
+        This method should be implemented by concrete classes to define:
+        - Which states are silence, suspend, or activate states
+        - The status-condition-action-next_status mappings
+        - The status-condition-next_status mappings
+        """
         return
 
     @abstractmethod
     def get_node_final_info(self):
+        """
+        Get the final information about this node after execution.
+
+        This method should be implemented by concrete classes to return
+        relevant information about the node's execution results.
+        """
         pass
 
     @abstractmethod
     def get_node_final_result(self):
+        """
+        Get the final result of this node's execution.
+
+        This method should be implemented by concrete classes to return
+        the actual output/result produced by this node.
+        """
         pass
 
     def get_outer_write_task(self):
+        """
+        Get the outer writing task that contains this node.
+
+        Returns:
+            AbstractNode: The outer COMPOSITION node that contains this node.
+                Returns None if this is a root node.
+        """
         cur_node = (
             self.node_graph_info["outer_node"]
             if self.node_type == NodeType.EXECUTE_NODE
@@ -102,20 +159,32 @@ class AbstractNode(ABC):
 
     @property
     def is_atom(self):
+        """
+        Check if this node represents an atomic task.
+
+        A task is atomic if it's an EXECUTE_NODE and its outer node's task queue
+        contains only one task.
+
+        Returns:
+            bool: True if this is an atomic task, False otherwise.
+        """
         return (self.node_type == NodeType.EXECUTE_NODE) and (
             len(self.node_graph_info["outer_node"].topological_task_queue) == 1
         )
 
     def get_direct_depend_write_task(self):
+        """
+        Get all COMPOSITION tasks that directly depend on this node.
+
+        Returns:
+            list: List of COMPOSITION nodes that have this node as a parent.
+        """
         cur_node = (
             self.node_graph_info["outer_node"]
             if self.node_type == NodeType.EXECUTE_NODE
             else self
         )
         outer_node = cur_node.node_graph_info["outer_node"]
-        # logger.error("Current: {}\t\tOuter: {}".format(
-        #     cur_node, outer_node
-        # ))
         if outer_node is None:
             return None
         graph = outer_node.inner_graph.topological_task_queue
@@ -125,19 +194,25 @@ class AbstractNode(ABC):
                 for par_node in node.node_graph_info["parent_nodes"]:
                     if par_node.nid == cur_node.nid:
                         depend_write_tasks.append(node)
-        # logger.error(str(depend_write_tasks))
         return depend_write_tasks
 
     def get_all_previous_writing_plan(self):
+        """
+        Get a hierarchical representation of all writing tasks in the graph.
+
+        This method traverses the task graph and builds a string representation of all
+        COMPOSITION tasks, showing their relationships, status, and progress.
+
+        Returns:
+            str: A formatted string showing the hierarchical writing plan with status indicators.
+        """
         all_tasks = []
 
-        # dfs traverse, exclude search and think task,
         def inner(cur_node, prefix_tab, cur_write_id_list):
             layer = cur_node.node_graph_info["layer"]
             if (cur_node.node_type == NodeType.EXECUTE_NODE) and (
                 len(cur_node.node_graph_info["outer_node"].topological_task_queue) == 1
             ):
-                # Accommodate both old and new versions. In the new version, the execute node is directly specified. In the old version, the execute node is an internal node (a graph with only one node), only the latter case needs to be handled
                 return None
             if cur_node.task_type_tag != "COMPOSITION":
                 return None
@@ -184,7 +259,16 @@ class AbstractNode(ABC):
         return "\n".join(all_tasks)
 
     def get_all_layer_plan(self):
-        # if self.task_type_tag == "COMPOSITION"
+        """
+        Get a JSON representation of the task plan up to a specific layer.
+
+        This method builds a JSON structure representing the task hierarchy up to
+        the layer after this node's layer, including task types, goals, dependencies,
+        and completion status.
+
+        Returns:
+            dict: A JSON structure representing the task plan.
+        """
         target_layer = self.node_graph_info["layer"] + 1
 
         def inner(cur_node):
@@ -219,6 +303,15 @@ class AbstractNode(ABC):
         return plan_json
 
     def get_all_lt_layer_plan(self):
+        """
+        Get a string representation of all tasks up to this node's layer.
+
+        This method creates a formatted string showing all tasks up to and including
+        the current node's layer, with proper indentation to show hierarchy.
+
+        Returns:
+            str: A formatted string showing the task plan with proper indentation.
+        """
         plan_string = []
         target_layer = self.node_graph_info["layer"]
 
@@ -259,6 +352,20 @@ class AbstractNode(ABC):
         return "\n".join(plan_string)
 
     def check_status_valid(self):
+        """
+        Validate that the node's status definitions are complete and consistent.
+
+        This method checks that:
+        1. All required status categories (silence, suspend, activate) are defined
+        2. All activate states have corresponding action mappings
+        3. All suspend states have corresponding exam mappings
+
+        Raises:
+            Exception: If any validation check fails.
+
+        Returns:
+            bool: True if all validations pass.
+        """
         assert "silence" in self.status_list
         assert "suspend" in self.status_list
         assert "activate" in self.status_list
@@ -297,8 +404,27 @@ class AbstractNode(ABC):
 
         return True
 
-    # ======= Run =======
     def next_action_step(self, memory, *args, **kwargs):
+        """
+        Execute the next action for this node based on its current status.
+
+        This method:
+        1. Checks that the node is in an activate state
+        2. Evaluates conditions to determine the next action
+        3. Executes the action and updates the node's status
+
+        Args:
+            memory: The memory context for the action
+            *args: Additional positional arguments for the action
+            **kwargs: Additional keyword arguments for the action
+
+        Returns:
+            tuple: (action_name, result) - The name of the action executed and its result
+
+        Raises:
+            NotImplementedError: If the node is not in an activate state
+            Exception: If no condition matches for the current status
+        """
         # --- RUN ---
         if not self.is_activate:
             raise NotImplementedError(
@@ -324,8 +450,21 @@ class AbstractNode(ABC):
 
         return action_name, result
 
-    # ======= Exam =======
     def do_exam(self, verbose):
+        """
+        Examine the node's status and update it based on defined conditions.
+
+        This method:
+        1. Checks that the node is in a suspend state
+        2. Evaluates conditions to determine if the status should change
+        3. Updates the status if conditions are met
+
+        Args:
+            verbose (bool): Whether to log status changes
+
+        Raises:
+            NotImplementedError: If the node is not in a suspend state
+        """
         if not self.is_suspend:
             raise NotImplementedError(
                 "Error Status process, status ({}) is not suspend category".format(
@@ -343,11 +482,21 @@ class AbstractNode(ABC):
                 self.status = next_status
                 break
 
-    # ======= Save and display Part ======
-    def __str__(self):
-        return self.task_str()
-
     def task_str(self):
+        """
+        Get a string representation of this task node.
+
+        The string includes:
+        - Node ID
+        - Node type indicator (* for EXECUTE_NODE)
+        - Task type and length (for COMPOSITION tasks)
+        - Task goal
+        - Parent node IDs (excluding COMPOSITION parents)
+        - Current status
+
+        Returns:
+            str: A formatted string representing this task node.
+        """
         if self.task_type_tag == "COMPOSITION":
             tag = "【{}.{}】".format(
                 self.task_info["task_type"], self.task_info["length"]
@@ -370,10 +519,41 @@ class AbstractNode(ABC):
             self.status.name,
         )
 
+    def __str__(self):
+        """
+        Get a string representation of this node.
+
+        Returns:
+            str: The task string representation of this node.
+        """
+        return self.task_str()
+
     def __repr__(self):
+        """
+        Get a string representation of this node for debugging.
+
+        Returns:
+            str: The task string representation of this node.
+        """
         return self.__str__()
 
     def to_json(self):
+        """
+        Convert this node to a JSON-serializable dictionary.
+
+        The dictionary includes:
+        - Node ID
+        - Task information
+        - Graph information
+        - Raw plan
+        - Node type
+        - Status
+        - Results
+        - Inner graph
+
+        Returns:
+            dict: A JSON-serializable dictionary representing this node.
+        """
         obj = {
             "nid": self.nid,
             "task_info": AbstractNode.process_all_node_to_node_str(self.task_info),
@@ -390,23 +570,57 @@ class AbstractNode(ABC):
 
     @property
     def topological_task_queue(self):
+        """
+        Get the topologically sorted queue of tasks in this node's inner graph.
+
+        Returns:
+            list: A list of nodes in topological order.
+        """
         return self.inner_graph.topological_task_queue
 
-    # ===== Status category ==========
     @property
     def is_silence(self):
+        """
+        Check if this node is in a silence state.
+
+        Returns:
+            bool: True if the node's status is in the silence category.
+        """
         return self.status in self.status_list["silence"]
 
     @property
     def is_suspend(self):
+        """
+        Check if this node is in a suspend state.
+
+        Returns:
+            bool: True if the node's status is in the suspend category.
+        """
         return self.status in self.status_list["suspend"]
 
     @property
     def is_activate(self):
+        """
+        Check if this node is in an activate state.
+
+        Returns:
+            bool: True if the node's status is in the activate category.
+        """
         return self.status in self.status_list["activate"]
 
-    # ===== Utils ====
     def plan2graph(self, raw_plan):
+        """
+        Convert a raw planning result into a task graph.
+
+        This method:
+        1. Processes the raw plan JSON
+        2. Creates nodes for each task
+        3. Establishes dependencies between nodes
+        4. Builds the inner graph structure
+
+        Args:
+            raw_plan (list): List of task dictionaries from the planner
+        """
         if (
             len(raw_plan) == 0
         ):  # Atomic task, still create an execution graph, but the execution graph has only one execute node, iterating through required_task_info_keys and retrieving them.
@@ -525,6 +739,24 @@ class AbstractNode(ABC):
         return
 
     def do_action(self, action_name, memory, *args, **kwargs):
+        """
+        Execute an action on this node.
+
+        This method:
+        1. Gets the appropriate agent for the action
+        2. Executes the action
+        3. Records the result and timestamp
+        4. Logs the result (except for certain actions)
+
+        Args:
+            action_name (str): Name of the action to execute
+            memory: Memory context for the action
+            *args: Additional positional arguments
+            **kwargs: Additional keyword arguments
+
+        Returns:
+            The result of the action execution.
+        """
         agent = self.agent_proxy.proxy(action_name)
         result = getattr(self, action_name)(agent, memory, *args, **kwargs)
         # Saving information
