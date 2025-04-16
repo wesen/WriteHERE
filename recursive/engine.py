@@ -2,7 +2,7 @@
 
 from collections import defaultdict, deque
 from typing import List, Dict
-from recursive.nodes import RegularDummyNode
+from recursive.node.regular_dummy import RegularDummyNode
 from recursive.common.enums import TaskStatus, NodeType
 from recursive.utils.display import display_graph, display_plan
 from recursive.agent.proxy import AgentProxy
