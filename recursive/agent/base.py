@@ -15,8 +15,11 @@ from loguru import logger
 from datetime import datetime
 import os
 import yaml
+from typing import Any
 
 from recursive.agent.registry import agent_register
+from recursive.node.abstract import AbstractNode
+from recursive.memory import Memory
 
 
 class Agent(ABC):
@@ -27,11 +30,11 @@ class Agent(ABC):
         os.makedirs("debug/logs/llm", exist_ok=True)
 
     @abstractmethod
-    def forward(self, node, memory, *args, **kwargs):
+    def forward(self, node: AbstractNode, memory: Memory, *args: Any, **kwargs: Any):
         raise NotImplementedError()
 
     @abstractmethod
-    def parse_result(self, agent_output, *args, **kwargs):
+    def parse_result(self, agent_output: str, *args: Any, **kwargs: Any) -> Any:
         raise NotImplementedError()
 
     def call_llm(
@@ -144,14 +147,14 @@ class DummyRandomPlanningAgent(Agent):
         return result
 
     @overrides
-    def parse_result(self, agent_output, *args, **kwargs) -> Dict:
+    def parse_result(self, agent_output: str, *args: Any, **kwargs: Any) -> Any:
         return agent_output
 
 
 @agent_register.register_module()
 class SinglePlanningAgent(Agent):
     @overrides
-    def forward(self, node, memory, *args, **kwargs) -> str:
+    def forward(self, node: AbstractNode, memory: Memory, *args: Any, **kwargs: Any) -> str:
         layer = node.node_graph_info["layer"]
         if layer == 1:
             result = {"original": "", "result": [], "thought": ""}
@@ -163,14 +166,14 @@ class SinglePlanningAgent(Agent):
         return result
 
     @overrides
-    def parse_result(self, agent_output, *args, **kwargs) -> Dict:
+    def parse_result(self, agent_output: str, *args: Any, **kwargs: Any) -> Any:
         return agent_output
 
 
 @agent_register.register_module()
 class DummyRandomExecutorAgent(Agent):
     @overrides
-    def forward(self, node, memory, *args, **kwargs) -> str:
+    def forward(self, node: AbstractNode, memory: Memory, *args: Any, **kwargs: Any) -> str:
         result = {
             "original": "",
             "process": [],
@@ -180,47 +183,47 @@ class DummyRandomExecutorAgent(Agent):
         return result
 
     @overrides
-    def parse_result(self, agent_output, *args, **kwargs) -> Dict:
+    def parse_result(self, agent_output: str, *args: Any, **kwargs: Any) -> Any:
         return agent_output
 
 
 @agent_register.register_module()
 class DummyRandomUpdateAgent(Agent):
     @overrides
-    def forward(self, node, memory, *args, **kwargs) -> str:
+    def forward(self, node: AbstractNode, memory: Memory, *args: Any, **kwargs: Any) -> str:
         return None
 
     @overrides
-    def parse_result(self, agent_output, *args, **kwargs) -> Dict:
+    def parse_result(self, agent_output: str, *args: Any, **kwargs: Any) -> Any:
         return json.loads(agent_output)
 
 
 @agent_register.register_module()
 class DummyRandomPriorReflectionAgent(Agent):
     @overrides
-    def forward(self, node, memory, *args, **kwargs) -> str:
+    def forward(self, node: AbstractNode, memory: Memory, *args: Any, **kwargs: Any) -> str:
         return None
 
     @overrides
-    def parse_result(self, agent_output, *args, **kwargs) -> Dict:
+    def parse_result(self, agent_output: str, *args: Any, **kwargs: Any) -> Any:
         return json.loads(agent_output)
 
 
 @agent_register.register_module()
 class DummyRandomPlanningPostReflectionAgent(Agent):
     @overrides
-    def forward(self, node, memory, *args, **kwargs) -> str:
+    def forward(self, node: AbstractNode, memory: Memory, *args: Any, **kwargs: Any) -> str:
         return None
 
     @overrides
-    def parse_result(self, agent_output, *args, **kwargs) -> Dict:
+    def parse_result(self, agent_output: str, *args: Any, **kwargs: Any) -> Any:
         return json.loads(agent_output)
 
 
 @agent_register.register_module()
 class DummyRandomExecutorPostReflectionAgent(Agent):
     @overrides
-    def forward(self, node, memory, *args, **kwargs) -> str:
+    def forward(self, node: AbstractNode, memory: Memory, *args: Any, **kwargs: Any) -> str:
         result = {
             "thought": "",
             "original": "",
@@ -230,14 +233,14 @@ class DummyRandomExecutorPostReflectionAgent(Agent):
         return result
 
     @overrides
-    def parse_result(self, agent_output, *args, **kwargs) -> Dict:
+    def parse_result(self, agent_output: str, *args: Any, **kwargs: Any) -> Any:
         return json.loads(agent_output)
 
 
 @agent_register.register_module()
 class DummyRandomFinalAggregateAgent(Agent):
     @overrides
-    def forward(self, node, memory, *args, **kwargs) -> str:
+    def forward(self, node: AbstractNode, memory: Memory, *args: Any, **kwargs: Any) -> str:
         result = {
             "thought": "",
             "original": "",
@@ -247,7 +250,7 @@ class DummyRandomFinalAggregateAgent(Agent):
         return result
 
     @overrides
-    def parse_result(self, agent_output, *args, **kwargs) -> Dict:
+    def parse_result(self, agent_output: str, *args: Any, **kwargs: Any) -> Any:
         return json.loads(agent_output)
 
 
