@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Event Payload - Tabbed Approach</title>
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    .event-list {
+      height: calc(100vh - 120px);
+      overflow-y: auto;
+    }
+    
+    .event-item {
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+    
+    .event-item:hover {
+      background-color: rgba(0, 123, 255, 0.1);
+    }
+    
+    .event-item.active {
+      background-color: rgba(0, 123, 255, 0.15);
+      border-left: 3px solid #0d6efd;
+    }
+    
+    .event-type-badge {
+      width: 140px;
+    }
+    
+    .event-details {
+      height: calc(100vh - 120px);
+      overflow-y: auto;
+      border-left: 1px solid #dee2e6;
+    }
+    
+    .event-details-placeholder {
+      display: flex;
+      height: 100%;
+      align-items: center;
+      justify-content: center;
+      color: #6c757d;
+    }
+    
+    .tab-content {
+      padding: 1rem;
+    }
+    
+    pre.json {
+      max-height: 300px;
+      overflow-y: auto;
+    }
+    
+    .event-nav .nav-link {
+      border-radius: 0;
+      border-bottom-width: 2px;
+      padding: 0.5rem 1rem;
+    }
+    
+    .event-nav .nav-link.active {
+      font-weight: 500;
+    }
+  </style>
+</head>
+<body>
+  <div class="container-fluid py-3">
+    <h4 class="mb-3">Research Planning Agent Events</h4>
+    
+    <div class="row g-0">
+      <!-- Left column: Event list -->
+      <div class="col-md-5 col-lg-4">
+        <div class="card event-list">
+          <div class="list-group list-group-flush">
+            <!-- Example events -->
+            <div class="list-group-item event-item d-flex align-items-center">
+              <div class="d-flex align-items-center flex-grow-1">
+                <span class="badge bg-primary event-type-badge me-2">step_started</span>
+                <small class="text-muted me-2">2023-10-15 14:23:45</small>
+                <span class="text-truncate">Node: analyze_data_requirements</span>
+              </div>
+            </div>
+            
+            <div class="list-group-item event-item active d-flex align-items-center">
+              <div class="d-flex align-items-center flex-grow-1">
+                <span class="badge bg-info event-type-badge me-2">llm_call_started</span>
+                <small class="text-muted me-2">2023-10-15 14:23:47</small>
+                <span class="text-truncate">Agent: DataAnalysisAgent</span>
+              </div>
+            </div>
+            
+            <div class="list-group-item event-item d-flex align-items-center">
+              <div class="d-flex align-items-center flex-grow-1">
+                <span class="badge bg-success event-type-badge me-2">llm_call_completed</span>
+                <small class="text-muted me-2">2023-10-15 14:23:52</small>
+                <span class="text-truncate">Duration: 5.2s</span>
+              </div>
+            </div>
+            
+            <div class="list-group-item event-item d-flex align-items-center">
+              <div class="d-flex align-items-center flex-grow-1">
+                <span class="badge bg-warning event-type-badge me-2">tool_invoked</span>
+                <small class="text-muted me-2">2023-10-15 14:23:53</small>
+                <span class="text-truncate">Tool: data_loader</span>
+              </div>
+            </div>
+            
+            <div class="list-group-item event-item d-flex align-items-center">
+              <div class="d-flex align-items-center flex-grow-1">
+                <span class="badge bg-secondary event-type-badge me-2">tool_returned</span>
+                <small class="text-muted me-2">2023-10-15 14:23:55</small>
+                <span class="text-truncate">State: success</span>
+              </div>
+            </div>
+            
+            <div class="list-group-item event-item d-flex align-items-center">
+              <div class="d-flex align-items-center flex-grow-1">
+                <span class="badge bg-dark event-type-badge me-2">node_status_changed</span>
+                <small class="text-muted me-2">2023-10-15 14:23:56</small>
+                <span class="text-truncate">Status: in_progress → completed</span>
+              </div>
+            </div>
+            
+            <div class="list-group-item event-item d-flex align-items-center">
+              <div class="d-flex align-items-center flex-grow-1">
+                <span class="badge bg-danger event-type-badge me-2">step_finished</span>
+                <small class="text-muted me-2">2023-10-15 14:23:57</small>
+                <span class="text-truncate">Duration: 12.1s</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Right column: Event details with tabs -->
+      <div class="col-md-7 col-lg-8">
+        <div class="card event-details">
+          <div class="card-header bg-white p-0">
+            <div class="d-flex align-items-center p-3">
+              <span class="badge bg-info me-2 event-type-badge">llm_call_started</span>
+              <span class="text-muted me-2">|</span>
+              <small class="text-muted">2023-10-15 14:23:47</small>
+            </div>
+            
+            <ul class="nav nav-tabs event-nav">
+              <li class="nav-item">
+                <a class="nav-link active" id="summary-tab" data-bs-toggle="tab" href="#summary">Summary</a>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link" id="json-tab" data-bs-toggle="tab" href="#json">JSON</a>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link" id="related-tab" data-bs-toggle="tab" href="#related">Related Events</a>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link" id="metadata-tab" data-bs-toggle="tab" href="#metadata">Metadata</a>
+              </li>
+            </ul>
+          </div>
+          
+          <div class="tab-content">
+            <!-- Summary Tab -->
+            <div class="tab-pane fade show active" id="summary">
+              <div class="card mb-3">
+                <div class="card-header bg-light py-2">
+                  <strong>Event Information</strong>
+                </div>
+                <div class="card-body">
+                  <div class="row g-2">
+                    <div class="col-md-6">
+                      <p class="mb-1"><strong>Event ID:</strong> e23456-78901</p>
+                      <p class="mb-1"><strong>Run ID:</strong> run-abc123</p>
+                      <p class="mb-1"><strong>Timestamp:</strong> 2023-10-15 14:23:47</p>
+                    </div>
+                    <div class="col-md-6">
+                      <p class="mb-1"><strong>Agent Class:</strong> DataAnalysisAgent</p>
+                      <p class="mb-1"><strong>Model:</strong> gpt-4</p>
+                      <p class="mb-1"><strong>Node ID:</strong> node-1234</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              <div class="card">
+                <div class="card-header bg-light py-2">
+                  <strong>Prompt Preview</strong>
+                </div>
+                <div class="card-body">
+                  <p>Analyze the given dataset to identify key patterns and correlations between variables. The dataset contains demographic information...</p>
+                </div>
+              </div>
+            </div>
+            
+            <!-- JSON Tab -->
+            <div class="tab-pane fade" id="json">
+              <div class="d-flex justify-content-end mb-2">
+                <button class="btn btn-sm btn-outline-secondary">Copy JSON</button>
+              </div>
+              <div class="card">
+                <div class="card-body p-0">
+                  <pre class="json p-3">{
+  "event_id": "e23456-78901",
+  "timestamp": "2023-10-15T14:23:47Z",
+  "event_type": "llm_call_started",
+  "run_id": "run-abc123",
+  "payload": {
+    "agent_class": "DataAnalysisAgent",
+    "model": "gpt-4",
+    "prompt_preview": "Analyze the given dataset to identify key patterns and correlations between variables. The dataset contains demographic information...",
+    "node_id": "node-1234"
+  }
+}</pre>
+                </div>
+              </div>
+            </div>
+            
+            <!-- Related Events Tab -->
+            <div class="tab-pane fade" id="related">
+              <div class="list-group">
+                <div class="list-group-item">
+                  <div class="d-flex w-100 justify-content-between">
+                    <h6 class="mb-1">
+                      <span class="badge bg-success">llm_call_completed</span>
+                      Associated LLM completion
+                    </h6>
+                    <small class="text-muted">14:23:52</small>
+                  </div>
+                  <p class="mb-1">Duration: 5.2s, Token usage: 1235 prompt + 458 completion</p>
+                </div>
+                
+                <div class="list-group-item">
+                  <div class="d-flex w-100 justify-content-between">
+                    <h6 class="mb-1">
+                      <span class="badge bg-primary">step_started</span>
+                      Parent step
+                    </h6>
+                    <small class="text-muted">14:23:45</small>
+                  </div>
+                  <p class="mb-1">Node: analyze_data_requirements</p>
+                </div>
+                
+                <div class="list-group-item">
+                  <div class="d-flex w-100 justify-content-between">
+                    <h6 class="mb-1">
+                      <span class="badge bg-danger">step_finished</span>
+                      Parent step completion
+                    </h6>
+                    <small class="text-muted">14:23:57</small>
+                  </div>
+                  <p class="mb-1">Duration: 12.1s, Status after: completed</p>
+                </div>
+              </div>
+            </div>
+            
+            <!-- Metadata Tab -->
+            <div class="tab-pane fade" id="metadata">
+              <div class="card">
+                <div class="card-header bg-light py-2">
+                  <strong>Technical Details</strong>
+                </div>
+                <div class="card-body">
+                  <table class="table table-sm table-hover">
+                    <tbody>
+                      <tr>
+                        <th scope="row" style="width: 180px;">Event Type</th>
+                        <td>llm_call_started</td>
+                      </tr>
+                      <tr>
+                        <th scope="row">Parent Run ID</th>
+                        <td>run-abc123</td>
+                      </tr>
+                      <tr>
+                        <th scope="row">Node Group</th>
+                        <td>data_analysis</td>
+                      </tr>
+                      <tr>
+                        <th scope="row">Agent Version</th>
+                        <td>1.2.3</td>
+                      </tr>
+                      <tr>
+                        <th scope="row">Thread ID</th>
+                        <td>thread-789</td>
+                      </tr>
+                      <tr>
+                        <th scope="row">Process ID</th>
+                        <td>pid-456</td>
+                      </tr>
+                      <tr>
+                        <th scope="row">Indexed</th>
+                        <td>Yes</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

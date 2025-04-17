@@ -1,5 +1,11 @@
 import { createApi, fetchBaseQuery } from "@reduxjs/toolkit/query/react";
 
+// Define the structure for a single message in the prompt
+export interface LlmMessage {
+  role: "system" | "user" | "assistant" | string; // Allow other roles potentially
+  content: string;
+}
+
 // Define the shape of an event based on the documentation
 export interface StepStartedPayload {
   step: number;
@@ -26,21 +32,28 @@ export interface NodeStatusChangePayload {
 export interface LlmCallStartedPayload {
   agent_class: string;
   model: string;
+  prompt: LlmMessage[]; // Changed to array of messages
   prompt_preview: string;
-  node_id?: string | null; // Optional based on python code
+  step?: number | null; // Added optional step
+  node_id?: string | null;
 }
 
 export interface TokenUsage {
   prompt_tokens: number;
   completion_tokens: number;
+  error?: string | null; // Optional
+  node_id?: string | null; // Optional
+  token_usage?: TokenUsage | null; // Optional
 }
 
 export interface LlmCallCompletedPayload {
   agent_class: string;
   model: string;
   duration_seconds: number;
+  response: string; // Changed to full response content
   result_summary: string;
   error?: string | null; // Optional
+  step?: number | null; // Added optional step
   node_id?: string | null; // Optional
   token_usage?: TokenUsage | null; // Optional
 }
@@ -61,6 +74,16 @@ export interface ToolReturnedPayload {
   error?: string | null; // Optional
   node_id?: string | null; // Optional
 }
+
+// Define a union of known event type strings
+export type KnownEventType =
+  | "step_started"
+  | "step_finished"
+  | "node_status_changed"
+  | "llm_call_started"
+  | "llm_call_completed"
+  | "tool_invoked"
+  | "tool_returned";
 
 // Discriminated Union for all possible events
 export type AgentEvent =
@@ -114,12 +137,12 @@ export type AgentEvent =
       payload: ToolReturnedPayload;
     }
   // Add other event types here if they exist (e.g., search_completed)
-  // Fallback for unknown event types if necessary, though ideally all are defined
+  // Fallback for unknown event types, ensuring it doesn't overlap with known types
   | {
       event_id: string;
       timestamp: string;
-      event_type: string;
-      run_id?: string | null;
+      run_id?: string | null; // Add run_id for consistency
+      event_type: Exclude<string, KnownEventType>; // Use Exclude here
       payload: Record<string, unknown>;
     };
 

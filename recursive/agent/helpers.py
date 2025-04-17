@@ -3,10 +3,19 @@ import re
 from copy import deepcopy
 
 from recursive.agent.prompts.base import prompt_register
+from recursive.common.context import ExecutionContext
+from typing import Optional
 
 
 def get_llm_output(
-    node, agent, memory, agent_type, overwrite_cache=False, *args, **kwargs
+    node,
+    agent,
+    memory,
+    agent_type,
+    overwrite_cache=False,
+    ctx: Optional[ExecutionContext] = None,
+    *args,
+    **kwargs
 ):
     memory_info = memory.collect_node_run_info(node)
     task_type = node.task_info.get("task_type", "")
@@ -135,6 +144,7 @@ def get_llm_output(
         parse_arg_dict=inner_kwargs["parse_arg_dict"],
         overwrite_cache=overwrite_cache,
         node=node,
+        ctx=ctx,
         **inner_kwargs.get("llm_args", {})
     )
     return llm_result

@@ -1,16 +1,26 @@
-from typing import Dict
+from typing import Dict, Any, Optional
 
 from overrides import overrides
 
 from recursive.agent.base import Agent
 from recursive.agent.helpers import get_llm_output
 from recursive.agent.registry import agent_register
+from recursive.memory import Memory
+from recursive.node.abstract import AbstractNode
+from recursive.common.context import ExecutionContext
 
 
 @agent_register.register_module()
 class FinalAggregateAgent(Agent):
     @overrides
-    def forward(self, node, memory, *args, **kwargs) -> str:
+    def forward(
+        self,
+        node: AbstractNode,
+        memory: Memory,
+        ctx: Optional[ExecutionContext] = None,
+        *args: Any,
+        **kwargs: Any
+    ) -> Dict:
         return_result = {}
         task_type = node.task_type_tag
         if task_type == "RETRIEVAL":
@@ -44,6 +54,7 @@ class FinalAggregateAgent(Agent):
                     self,
                     memory,
                     "final_aggregate",
+                    ctx=ctx,
                     to_run_final_aggregate=results,
                     *args,
                     **kwargs

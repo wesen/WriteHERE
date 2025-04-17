@@ -1,6 +1,6 @@
 import json
 import random
-from typing import Any
+from typing import Any, Optional
 
 from overrides import overrides
 
@@ -8,12 +8,20 @@ from recursive.agent.base import Agent
 from recursive.agent.registry import agent_register
 from recursive.memory import Memory
 from recursive.node.abstract import AbstractNode
+from recursive.common.context import ExecutionContext
 
 
 @agent_register.register_module()
 class DummyRandomPlanningAgent(Agent):
     @overrides
-    def forward(self, node, memory, *args, **kwargs) -> Any:
+    def forward(
+        self,
+        node: AbstractNode,
+        memory: Memory,
+        ctx: Optional[ExecutionContext] = None,
+        *args: Any,
+        **kwargs: Any
+    ) -> Any:
         # layer_cnt = random.randint(1, 3)
         layer = node.node_graph_info["layer"]
         result: dict[str, Any] = {}
@@ -55,7 +63,12 @@ class DummyRandomPlanningAgent(Agent):
 class DummyRandomExecutorAgent(Agent):
     @overrides
     def forward(
-        self, node: AbstractNode, memory: Memory, *args: Any, **kwargs: Any
+        self,
+        node: AbstractNode,
+        memory: Memory,
+        ctx: Optional[ExecutionContext] = None,
+        *args: Any,
+        **kwargs: Any
     ) -> Any:
         result = {
             "original": "",
@@ -74,7 +87,12 @@ class DummyRandomExecutorAgent(Agent):
 class DummyRandomUpdateAgent(Agent):
     @overrides
     def forward(
-        self, node: AbstractNode, memory: Memory, *args: Any, **kwargs: Any
+        self,
+        node: AbstractNode,
+        memory: Memory,
+        ctx: Optional[ExecutionContext] = None,
+        *args: Any,
+        **kwargs: Any
     ) -> Any:
         return None
 
@@ -87,7 +105,12 @@ class DummyRandomUpdateAgent(Agent):
 class DummyRandomPriorReflectionAgent(Agent):
     @overrides
     def forward(
-        self, node: AbstractNode, memory: Memory, *args: Any, **kwargs: Any
+        self,
+        node: AbstractNode,
+        memory: Memory,
+        ctx: Optional[ExecutionContext] = None,
+        *args: Any,
+        **kwargs: Any
     ) -> Any:
         return None
 
@@ -100,7 +123,12 @@ class DummyRandomPriorReflectionAgent(Agent):
 class DummyRandomPlanningPostReflectionAgent(Agent):
     @overrides
     def forward(
-        self, node: AbstractNode, memory: Memory, *args: Any, **kwargs: Any
+        self,
+        node: AbstractNode,
+        memory: Memory,
+        ctx: Optional[ExecutionContext] = None,
+        *args: Any,
+        **kwargs: Any
     ) -> Any:
         return None
 
@@ -113,7 +141,12 @@ class DummyRandomPlanningPostReflectionAgent(Agent):
 class DummyRandomExecutorPostReflectionAgent(Agent):
     @overrides
     def forward(
-        self, node: AbstractNode, memory: Memory, *args: Any, **kwargs: Any
+        self,
+        node: AbstractNode,
+        memory: Memory,
+        ctx: Optional[ExecutionContext] = None,
+        *args: Any,
+        **kwargs: Any
     ) -> Any:
         result: dict[str, Any] = {}
         result = {
@@ -133,7 +166,12 @@ class DummyRandomExecutorPostReflectionAgent(Agent):
 class DummyRandomFinalAggregateAgent(Agent):
     @overrides
     def forward(
-        self, node: AbstractNode, memory: Memory, *args: Any, **kwargs: Any
+        self,
+        node: AbstractNode,
+        memory: Memory,
+        ctx: Optional[ExecutionContext] = None,
+        *args: Any,
+        **kwargs: Any
     ) -> Any:
         result: dict[str, Any] = {}
         result = {

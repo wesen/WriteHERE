@@ -1,6 +1,6 @@
 # coding:utf8
 
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
 from overrides import overrides
 import json
 
@@ -15,6 +15,7 @@ from recursive.executor.action.bing_browser import BingBrowser
 from recursive.common.log_typing import log_typing
 from recursive.memory import Memory
 from recursive.node.abstract import AbstractNode
+from recursive.common.context import ExecutionContext
 
 
 @agent_register.register_module()
@@ -33,7 +34,12 @@ class UpdateAtomPlanningAgent(Agent):
     @log_typing
     @overrides
     def forward(
-        self, node: AbstractNode, memory: Memory, *args: Any, **kwargs: Any
+        self,
+        node: AbstractNode,
+        memory: Memory,
+        ctx: Optional[ExecutionContext] = None,
+        *args: Any,
+        **kwargs: Any
     ) -> Dict:
         """
         Execute the atomicity check and potential planning for a node.
@@ -47,6 +53,7 @@ class UpdateAtomPlanningAgent(Agent):
         Args:
             node (AbstractNode): The task node to process.
             memory (Memory): The current memory context.
+            ctx (Optional[ExecutionContext]): The execution context.
             *args: Additional positional arguments (passed to LLM calls).
             **kwargs: Additional keyword arguments (passed to LLM calls).
 

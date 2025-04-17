@@ -10,6 +10,9 @@ from recursive.agent.proxy import AgentProxy
 from recursive.common.enums import TaskStatus, NodeType
 from recursive.graph import Graph
 from recursive.utils.event_bus import emit_node_status_changed
+from recursive.common.context import ExecutionContext
+from recursive.memory import Memory
+from typing import Any, Optional
 
 
 class AbstractNode(ABC):
@@ -405,17 +408,24 @@ class AbstractNode(ABC):
 
         return True
 
-    def next_action_step(self, memory, *args, **kwargs):
+    def next_action_step(
+        self,
+        memory: Memory,
+        ctx: Optional[ExecutionContext] = None,
+        *args: Any,
+        **kwargs: Any,
+    ):
         """
         Execute the next action for this node based on its current status.
 
         This method:
         1. Checks that the node is in an activate state
         2. Evaluates conditions to determine the next action
-        3. Executes the action and updates the node's status
+        3. Executes the action and updates the node's status, passing context.
 
         Args:
             memory: The memory context for the action
+            ctx: The execution context (optional)
             *args: Additional positional arguments for the action
             **kwargs: Additional keyword arguments for the action
 
@@ -437,13 +447,13 @@ class AbstractNode(ABC):
         for condition_func, action_name, next_status in self.status_action_mapping[
             self.status
         ]:
-            if condition_func(self, memory, *args, **kwargs):
+            if condition_func(self, memory, ctx, *args, **kwargs):
                 logger.info(
                     "Do Action: {}, make {} -> {}".format(
                         action_name, self.status, next_status
                     )
                 )
-                result = self.do_action(action_name, memory, *args, **kwargs)
+                result = self.do_action(action_name, memory, ctx, *args, **kwargs)
                 self.status = next_status
                 break
         else:
@@ -750,19 +760,28 @@ class AbstractNode(ABC):
         self.inner_graph.topological_sort()
         return
 
-    def do_action(self, action_name, memory, *args, **kwargs):
+    def do_action(
+        self,
+        action_name: str,
+        memory: Memory,
+        ctx: Optional[ExecutionContext] = None,
+        *args: Any,
+        **kwargs: Any,
+    ):
         """
-        Execute an action on this node.
+        Execute an action on this node, passing execution context.
 
         This method:
-        1. Gets the appropriate agent for the action
-        2. Executes the action
+        1. Gets the appropriate agent function for the action via proxy
+        2. Executes the action by calling the node's method named `action_name`,
+           passing memory, context, and other args.
         3. Records the result and timestamp
         4. Logs the result (except for certain actions)
 
         Args:
-            action_name (str): Name of the action to execute
+            action_name (str): Name of the action to execute (must match a method name)
             memory: Memory context for the action
+            ctx: Execution context (optional)
             *args: Additional positional arguments
             **kwargs: Additional keyword arguments
 
@@ -772,7 +791,7 @@ class AbstractNode(ABC):
         # Note: Action execution itself (LLM calls, Tool calls within agents)
         # should emit their own specific events.
         agent = self.agent_proxy.proxy(action_name)
-        result = getattr(self, action_name)(agent, memory, *args, **kwargs)
+        result = getattr(self, action_name)(agent, memory, ctx=ctx, *args, **kwargs)
         # Saving information
         self.result[action_name] = {
             "result": result,

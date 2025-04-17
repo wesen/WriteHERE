@@ -13,6 +13,7 @@ from loguru import logger
 from recursive.common.log_typing import log_typing
 import time  # For timing steps
 from recursive.utils.event_bus import emit_step_started, emit_step_finished
+from recursive.common.context import ExecutionContext
 
 
 class GraphRunEngine:
@@ -161,7 +162,7 @@ class GraphRunEngine:
 
         1. Finds the next node ready for an action.
         2. Updates the memory context for that node.
-        3. Executes the node's next action step.
+        3. Executes the node's next action step, passing ExecutionContext.
         4. Triggers a graph-wide status examination (`forward_exam`).
         5. Optionally logs the graph state and saves the node structure.
 
@@ -226,6 +227,9 @@ class GraphRunEngine:
             root_id=self.root_node.hashkey,
         )
 
+        # Create ExecutionContext
+        ctx = ExecutionContext(step=step)
+
         # Execute the next step for this node
         # Update Memory
         self.memory.update_infos([need_next_step_node])
@@ -239,12 +243,12 @@ class GraphRunEngine:
         action_result: Any = None
         if not full_step:
             action_name, action_result = need_next_step_node.next_action_step(
-                self.memory, *action_args, **action_kwargs
+                self.memory, ctx, *action_args, **action_kwargs
             )
         else:
             # TODO: Implement or remove next_full_action_step
             action_name, action_result = need_next_step_node.next_action_step(
-                self.memory, *action_args, **action_kwargs
+                self.memory, ctx, *action_args, **action_kwargs
             )
             # action_name = need_next_step_node.next_full_action_step(self.memory) # Original code, method seems missing
 

@@ -15,6 +15,7 @@ import hashlib  # For hashing prompt (optional)
 from recursive.node.abstract import AbstractNode
 from recursive.memory import Memory
 from recursive.utils.event_bus import emit_llm_call_started, emit_llm_call_completed
+from recursive.common.context import ExecutionContext  # Added import
 
 
 class Agent(ABC):
@@ -38,7 +39,8 @@ class Agent(ABC):
         prompt,
         parse_arg_dict,
         history_message=None,
-        node: Optional[AbstractNode] = None,  # Pass node for context if possible
+        ctx: Optional[ExecutionContext] = None,  # Added ctx argument
+        node: Optional[AbstractNode] = None,
         **other_inner_args,
     ):
         llm = OpenAIApiProxy()
@@ -55,6 +57,7 @@ class Agent(ABC):
         logger.info(message[-1]["content"])
 
         model = other_inner_args.pop("model", "gpt-4o")
+        step = ctx.step if ctx else None  # Get step from context
 
         llm_call_start_time = time.monotonic()
         node_id = node.hashkey if node else None
@@ -76,15 +79,25 @@ class Agent(ABC):
         # Use a truncated prompt or a hash for the event payload
         # prompt_hash = hashlib.sha256(prompt.encode()).hexdigest()[:16]
         emit_llm_call_started(
-            agent_class=agent_name, model=model, prompt=prompt, node_id=node_id
+            agent_class=agent_name,
+            model=model,
+            prompt_messages=message,  # Pass full message list
+            prompt_preview=prompt[:200] + "...",
+            step=step,  # Pass step from context
+            node_id=node_id,
         )
 
         error_msg = None
         token_usage = None
-        result = {}
+        # Initialize result and response data structure
+        resp_data = {}  # Store raw response for logging
+        content = ""  # Initialize content
+        reason = ""  # Initialize reason
+        result = {}  # Initialize result dict
 
         try:
             resp = llm.call(messages=message, model=model, **other_inner_args)[0]
+            resp_data = resp  # Store raw response
             reason = (
                 resp["message"].get("reasoning_content", "") if "r1" in model else ""
             )
@@ -94,14 +107,20 @@ class Agent(ABC):
         except Exception as e:
             logger.error(f"LLM call failed: {e}")
             error_msg = str(e)
-            content = ""  # Ensure content is empty on error
+            content = f"ERROR: {error_msg}"  # Include error in content for clarity
             reason = ""
 
         llm_call_duration = time.monotonic() - llm_call_start_time
 
         # Update log data with response
         log_data.update(
-            {"response": {"content": content, "reason": reason, "raw_response": resp}}
+            {
+                "response": {
+                    "content": content,
+                    "reason": reason,
+                    "raw_response": resp_data,
+                }
+            }
         )
 
         assert isinstance(parse_arg_dict, dict)
@@ -112,8 +131,9 @@ class Agent(ABC):
             agent_class=agent_name,
             model=model,
             duration=llm_call_duration,
-            result_summary=content,  # Summary is truncated in helper
+            response_content=content,  # Pass full content
             error=error_msg,
+            step=step,  # Pass step from context
             node_id=node_id,
             token_usage=token_usage,
         )

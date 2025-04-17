@@ -5,7 +5,7 @@ import time
 import uuid
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, List
 
 import redis
 from pydantic import BaseModel, Field
@@ -22,7 +22,7 @@ EVENT_STREAM_MAXLEN = int(
 # --- Redis Client ---
 # Use decode_responses=True for easier handling in Python
 try:
-    redis_client = redis.Redis(
+    redis_client: Optional[redis.Redis] = redis.Redis(
         host=REDIS_HOST,
         port=REDIS_PORT,
         password=REDIS_PASSWORD,
@@ -168,14 +168,22 @@ def emit_node_status_changed(
 
 
 def emit_llm_call_started(
-    agent_class: str, model: str, prompt: str, node_id: Optional[str] = None
+    agent_class: str,
+    model: str,
+    prompt_messages: List[Dict[str, str]],
+    prompt_preview: str,
+    step: Optional[int] = None,
+    node_id: Optional[str] = None,
 ):
-    # Consider hashing or truncating the prompt for brevity/security
-    payload = {
+    # Consider hashing or truncating the prompt for brevity/security if needed later
+    payload: Dict[str, Any] = {
         "agent_class": agent_class,
         "model": model,
-        "prompt_preview": prompt[:200] + "...",
+        "prompt": prompt_messages,
+        "prompt_preview": prompt_preview,
     }
+    if step is not None:
+        payload["step"] = step
     if node_id:
         payload["node_id"] = node_id
     bus.publish(_create_event(EventType.LLM_CALL_STARTED, payload))
@@ -185,8 +193,9 @@ def emit_llm_call_completed(
     agent_class: str,
     model: str,
     duration: float,
-    result_summary: str,
+    response_content: str,
     error: Optional[str] = None,
+    step: Optional[int] = None,
     node_id: Optional[str] = None,
     token_usage: Optional[dict] = None,
 ):
@@ -194,10 +203,13 @@ def emit_llm_call_completed(
         "agent_class": agent_class,
         "model": model,
         "duration_seconds": duration,
-        "result_summary": result_summary[:500] + "...",  # Truncate result
+        "response": response_content,
+        "result_summary": response_content[:500] + "...",
     }
     if error:
         payload["error"] = error
+    if step is not None:
+        payload["step"] = step
     if node_id:
         payload["node_id"] = node_id
     if token_usage:

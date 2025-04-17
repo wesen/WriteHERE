@@ -1,4 +1,4 @@
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 from loguru import logger
 from overrides import overrides
@@ -12,6 +12,7 @@ from recursive.executor.agent import SearchAgent
 from recursive.common.log_typing import log_typing
 from recursive.memory import Memory
 from recursive.node.abstract import AbstractNode
+from recursive.common.context import ExecutionContext
 
 
 @agent_register.register_module()
@@ -32,13 +33,13 @@ class SimpleExecutor(Agent):
     @log_typing
     @overrides
     def forward(
-        self, node: AbstractNode, memory: Memory, *args: Any, **kwargs: Any
+        self, node: AbstractNode, memory: Memory, ctx: Optional[ExecutionContext] = None, *args: Any, **kwargs: Any
     ) -> Dict:
         """
         Execute the task represented by the node.
 
         Determines the execution strategy based on the node's task type tag
-        and configuration.
+        and configuration. Passes ExecutionContext down to LLM calls.
 
         - For RETRIEVAL tasks with `react_agent` enabled in config:
             - Initializes and runs a `SearchAgent` (ReAct style).
@@ -53,6 +54,7 @@ class SimpleExecutor(Agent):
         Args:
             node (AbstractNode): The node representing the task to execute.
             memory (Memory): The shared memory object providing context.
+            ctx (Optional[ExecutionContext]): The execution context for the task.
             *args: Additional positional arguments (unused by default, potentially passed to LLM calls).
             **kwargs: Additional keyword arguments (unused by default, potentially passed to LLM calls).
 
@@ -201,7 +203,7 @@ class SimpleExecutor(Agent):
             # Optionally merge results using another LLM call
             if inner_kwargs.get("llm_merge", False):
                 merge_result = self.search_merge(
-                    node, memory, execute_result_str, to_run_outer_write_task
+                    node, memory, execute_result_str, to_run_outer_write_task, ctx=ctx
                 )
                 llm_result = {
                     "ori": react_agent_result.get(
@@ -228,7 +230,7 @@ class SimpleExecutor(Agent):
             llm_result = {}  # Initialize
             while not succ and retry_cnt < MAX_RETRIES:
                 llm_result = get_llm_output(
-                    node, self, memory, "execute", retry_cnt > 0, *args, **kwargs
+                    node, self, memory, "execute", retry_cnt > 0, ctx=ctx, *args, **kwargs
                 )
                 # Check if the execution produced a non-empty result
                 succ = llm_result.get("result", "").strip() != ""
@@ -297,6 +299,7 @@ class SimpleExecutor(Agent):
         memory: Memory,
         search_results: str,
         to_run_outer_write_task: str,
+        ctx: Optional[ExecutionContext] = None,
         *args: Any,
         **kwargs: Any
     ) -> Dict:
@@ -314,6 +317,7 @@ class SimpleExecutor(Agent):
             memory (Memory): The shared memory object.
             search_results (str): The formatted string of search results from the ReAct agent.
             to_run_outer_write_task (str): Context string describing the outer writing task.
+            ctx (Optional[ExecutionContext]): The execution context for the task.
             *args: Additional positional arguments (unused).
             **kwargs: Additional keyword arguments (unused).
 
@@ -384,6 +388,7 @@ class SimpleExecutor(Agent):
                 prompt=prompt,
                 parse_arg_dict=inner_kwargs["parse_arg_dict"],
                 overwrite_cache=True if retry_cnt > 0 else False,
+                ctx=ctx,
                 **inner_kwargs.get("llm_args", {})
             )
             # Check if the merge produced a non-empty result
