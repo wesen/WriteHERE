@@ -9,6 +9,7 @@ from loguru import logger
 from recursive.agent.proxy import AgentProxy
 from recursive.common.enums import TaskStatus, NodeType
 from recursive.graph import Graph
+from recursive.utils.event_bus import emit_node_status_changed
 
 
 class AbstractNode(ABC):
@@ -452,7 +453,7 @@ class AbstractNode(ABC):
 
     def do_exam(self, verbose):
         """
-        Examine the node's status and update it based on defined conditions.
+        Examine the node's status and update it based on defined conditions, emitting an event on change.
 
         This method:
         1. Checks that the node is in a suspend state
@@ -473,13 +474,24 @@ class AbstractNode(ABC):
             )
         for condition_func, next_status in self.status_exam_mapping[self.status]:
             if condition_func(self):
+                old_status = self.status
+                # --- Emit NodeStatusChanged ---
+                if old_status != next_status:
+                    emit_node_status_changed(
+                        node_id=self.hashkey,
+                        node_goal=self.task_info.get("goal", "?"),
+                        old_status=old_status.name,
+                        new_status=next_status.name,
+                    )
                 if verbose:
                     logger.info(
                         "Do Exam, {}:{} make {} -> {}".format(
                             self.nid, self.task_info["goal"], self.status, next_status
                         )
                     )
-                self.status = next_status
+                self.status = (
+                    next_status  # Status change happens *after* event emission
+                )
                 break
 
     def task_str(self):
@@ -757,6 +769,8 @@ class AbstractNode(ABC):
         Returns:
             The result of the action execution.
         """
+        # Note: Action execution itself (LLM calls, Tool calls within agents)
+        # should emit their own specific events.
         agent = self.agent_proxy.proxy(action_name)
         result = getattr(self, action_name)(agent, memory, *args, **kwargs)
         # Saving information

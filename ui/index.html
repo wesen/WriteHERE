@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Recursive Agent - Live Events</title>
+    <style>
+        body {
+            font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 20px;
+            background-color: #f4f4f4;
+            color: #333;
+        }
+
+        h1 {
+            text-align: center;
+            color: #2c3e50;
+            margin-bottom: 20px;
+        }
+
+        #eventsTable {
+            border-collapse: collapse;
+            width: 100%;
+            margin-top: 20px;
+            background-color: #fff;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+        }
+
+        #eventsTable th,
+        #eventsTable td {
+            border: 1px solid #ddd;
+            padding: 10px 12px;
+            text-align: left;
+            font-size: 0.9em;
+        }
+
+        #eventsTable th {
+            background-color: #3498db;
+            color: white;
+            position: sticky;
+            top: 0;
+            z-index: 1;
+        }
+
+        #eventsTable tr:nth-child(even) {
+            background-color: #ecf0f1;
+        }
+
+        #eventsTable tr:hover {
+            background-color: #d6eaf8;
+        }
+
+        #status {
+            margin-top: 15px;
+            padding: 10px;
+            background-color: #eaf2f8;
+            border: 1px solid #aed6f1;
+            border-radius: 4px;
+            text-align: center;
+            font-weight: bold;
+        }
+
+        .status-connected {
+            color: #27ae60;
+        }
+
+        .status-disconnected {
+            color: #c0392b;
+        }
+
+        .payload-details {
+            max-height: 100px;
+            overflow-y: auto;
+            display: block;
+            white-space: pre-wrap;
+            word-break: break-all;
+            background-color: #fff;
+            padding: 5px;
+            border: 1px solid #eee;
+            font-family: monospace;
+            font-size: 0.85em;
+            margin-top: 5px;
+        }
+
+        .event-type {
+            font-weight: bold;
+        }
+
+        .event-step_started {
+            color: #2980b9;
+        }
+
+        .event-step_finished {
+            color: #16a085;
+        }
+
+        .event-node_status_changed {
+            color: #8e44ad;
+        }
+
+        .event-llm_call_started {
+            color: #f39c12;
+        }
+
+        .event-llm_call_completed {
+            color: #d35400;
+        }
+
+        .event-tool_invoked {
+            color: #2c3e50;
+        }
+
+        .event-tool_returned {
+            color: #7f8c8d;
+        }
+
+        .error {
+            color: #e74c3c;
+            font-weight: bold;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Recursive Agent - Live Event Stream</h1>
+    <div id="status" class="status-disconnected">Connecting...</div>
+
+    <table id="eventsTable">
+        <thead>
+            <tr>
+                <th>Timestamp</th>
+                <th>Type</th>
+                <th>Run ID</th>
+                <th>Payload / Details</th>
+            </tr>
+        </thead>
+        <tbody>
+            <!-- Events will be prepended here -->
+        </tbody>
+    </table>
+
+    <script>
+        const tableBody = document.querySelector("#eventsTable tbody");
+        const statusDiv = document.getElementById("status");
+        let ws;
+
+        function connectWebSocket() {
+            // Determine WebSocket protocol based on window location
+            const wsProtocol =
+                window.location.protocol === "https:" ? "wss:" : "ws:";
+            // Construct WebSocket URL dynamically
+            const wsUrl = `${wsProtocol}//${window.location.hostname}:${window.location.port}/ws/events`;
+            console.log(`Attempting to connect to WebSocket: ${wsUrl}`);
+
+            ws = new WebSocket(wsUrl);
+
+            ws.onopen = () => {
+                console.log("WebSocket connection established");
+                statusDiv.textContent = "Connected";
+                statusDiv.className = "status-connected";
+            };
+
+            ws.onmessage = (event) => {
+                try {
+                    const eventData = JSON.parse(event.data);
+                    console.log("Received event:", eventData);
+                    addEventToTable(eventData);
+                } catch (e) {
+                    console.error("Failed to parse event data:", e);
+                    // Optionally display raw data or an error message in the table
+                    addRawEventToTable(event.data);
+                }
+            };
+
+            ws.onerror = (error) => {
+                console.error("WebSocket error:", error);
+                statusDiv.textContent = "Connection Error";
+                statusDiv.className = "status-disconnected";
+            };
+
+            ws.onclose = (event) => {
+                console.log("WebSocket connection closed:", event.code, event.reason);
+                statusDiv.textContent = "Disconnected. Attempting to reconnect...";
+                statusDiv.className = "status-disconnected";
+                // Simple exponential backoff reconnect
+                setTimeout(
+                    connectWebSocket,
+                    Math.min(1000 * 2 ** Math.floor(Math.random() * 5), 30000)
+                ); // Reconnect after 1-30 seconds
+            };
+        }
+
+        function formatTimestamp(isoString) {
+            try {
+                const date = new Date(isoString);
+                // Format to HH:MM:SS.sss
+                return date.toLocaleTimeString("en-US", {
+                    hour12: false,
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    second: "2-digit",
+                    fractionalSecondDigits: 3,
+                });
+            } catch (e) {
+                console.error("Error formatting timestamp:", isoString, e);
+                return isoString; // Fallback to original string
+            }
+        }
+
+        function addEventToTable(eventData) {
+            const row = tableBody.insertRow(0); // Prepend new rows
+
+            const cellTimestamp = row.insertCell();
+            const cellType = row.insertCell();
+            const cellRunId = row.insertCell();
+            const cellPayload = row.insertCell();
+
+            cellTimestamp.textContent = formatTimestamp(eventData.timestamp);
+            cellType.innerHTML = `<span class="event-type event-${eventData.event_type.replace(
+                /-/g,
+                "_"
+            )}">${eventData.event_type}</span>`;
+            cellRunId.textContent = eventData.run_id || "N/A";
+
+            // Pretty print payload
+            const payloadPre = document.createElement("pre");
+            payloadPre.className = "payload-details";
+            try {
+                // Check for specific error fields in payload for highlighting
+                let payloadStr = JSON.stringify(eventData.payload, null, 2);
+                if (eventData.payload && eventData.payload.error) {
+                    payloadStr = payloadStr.replace(
+                        /"error":\s*"(.*?)"/g,
+                        '"error": "<span class=\'error\'>$1</span>"'
+                    );
+                    // This simple replace might break JSON validity if error contains quotes.
+                    // A more robust approach would parse and reconstruct the HTML.
+                    payloadPre.innerHTML = payloadStr; // Use innerHTML for error highlighting
+                } else {
+                    payloadPre.textContent = payloadStr;
+                }
+            } catch (e) {
+                payloadPre.textContent = `Error formatting payload: ${e}`;
+            }
+            cellPayload.appendChild(payloadPre);
+
+            // Limit table rows (optional)
+            const maxRows = 200;
+            if (tableBody.rows.length > maxRows) {
+                tableBody.deleteRow(tableBody.rows.length - 1);
+            }
+        }
+
+        function addRawEventToTable(rawData) {
+            const row = tableBody.insertRow(0);
+            const cellTimestamp = row.insertCell();
+            const cellType = row.insertCell();
+            const cellRunId = row.insertCell();
+            const cellPayload = row.insertCell();
+
+            cellTimestamp.textContent = formatTimestamp(new Date().toISOString()); // Use current time
+            cellType.textContent = "RAW/ERROR";
+            cellRunId.textContent = "N/A";
+            cellPayload.innerHTML = `<pre class="payload-details error">Failed to parse: ${escapeHtml(
+                rawData
+            )}</pre>`;
+        }
+
+        function escapeHtml(unsafe) {
+            return unsafe
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+
+        // Initial connection attempt
+        connectWebSocket();
+    </script>
+</body>
+
+</html>

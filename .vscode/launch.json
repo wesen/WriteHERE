@@ -1,0 +1,38 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug WriteHERE Engine",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/recursive/main.py",
+            "args": [
+                "--filename",
+                "test_data/qa_test.jsonl",
+                "--output-filename",
+                "project/qa/example_claude/test_output/result.jsonl",
+                "--done-flag-file",
+                "project/qa/example_claude/test_output/done.txt",
+                "--nodes-json-file",
+                "project/qa/example_claude/test_output/nodes.json",
+                "--model",
+                // "claude-3-5-sonnet-20241022",
+                "gpt-4o-mini",
+                "--engine-backend",
+                "google",
+                "--mode",
+                "report",
+                "--no-ws-server"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}",
+            },
+            "envFile": "${workspaceFolder}/recursive/api_key.env"
+        }
+    ]
+}

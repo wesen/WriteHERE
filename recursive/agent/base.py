@@ -7,11 +7,14 @@ from recursive.utils.parsing import parse_hierarchy_tags_result
 from loguru import logger
 from datetime import datetime
 import os
+import time  # For timing
 import yaml
-from typing import Any
+from typing import Any, Optional  # Added Optional
+import hashlib  # For hashing prompt (optional)
 
 from recursive.node.abstract import AbstractNode
 from recursive.memory import Memory
+from recursive.utils.event_bus import emit_llm_call_started, emit_llm_call_completed
 
 
 class Agent(ABC):
@@ -35,6 +38,7 @@ class Agent(ABC):
         prompt,
         parse_arg_dict,
         history_message=None,
+        node: Optional[AbstractNode] = None,  # Pass node for context if possible
         **other_inner_args,
     ):
         llm = OpenAIApiProxy()
@@ -52,6 +56,9 @@ class Agent(ABC):
 
         model = other_inner_args.pop("model", "gpt-4o")
 
+        llm_call_start_time = time.monotonic()
+        node_id = node.hashkey if node else None
+
         # Log the request before making the call
         timestamp = datetime.now().strftime("%Y-%m-%d--%H-%M-%S-%f")
         agent_name = self.__class__.__name__
@@ -65,13 +72,32 @@ class Agent(ABC):
             "other_args": other_inner_args,
         }
 
-        resp = llm.call(messages=message, model=model, **other_inner_args)[0]
-        if "r1" in model:
-            reason = resp["message"]["reasoning_content"]
-        else:
+        # --- Emit LLMCallStarted ---
+        # Use a truncated prompt or a hash for the event payload
+        # prompt_hash = hashlib.sha256(prompt.encode()).hexdigest()[:16]
+        emit_llm_call_started(
+            agent_class=agent_name, model=model, prompt=prompt, node_id=node_id
+        )
+
+        error_msg = None
+        token_usage = None
+        result = {}
+
+        try:
+            resp = llm.call(messages=message, model=model, **other_inner_args)[0]
+            reason = (
+                resp["message"].get("reasoning_content", "") if "r1" in model else ""
+            )
+            content = resp["message"].get("content", "")
+            logger.info("Get REASONING: {}\n\nResult: {}".format(reason, content))
+            token_usage = resp.get("usage")  # Assuming usage info is in the response
+        except Exception as e:
+            logger.error(f"LLM call failed: {e}")
+            error_msg = str(e)
+            content = ""  # Ensure content is empty on error
             reason = ""
-        content = resp["message"]["content"]
-        logger.info("Get REASONING: {}\n\nResult: {}".format(reason, content))
+
+        llm_call_duration = time.monotonic() - llm_call_start_time
 
         # Update log data with response
         log_data.update(
@@ -80,6 +106,17 @@ class Agent(ABC):
 
         assert isinstance(parse_arg_dict, dict)
         result = {"original": content, "result": content, "reason": reason}
+
+        # --- Emit LLMCallCompleted ---
+        emit_llm_call_completed(
+            agent_class=agent_name,
+            model=model,
+            duration=llm_call_duration,
+            result_summary=content,  # Summary is truncated in helper
+            error=error_msg,
+            node_id=node_id,
+            token_usage=token_usage,
+        )
 
         """  
         The following code extracts structured information from an LLM's textual response by looking for content within specific XML-like tags. It works by:
@@ -100,4 +137,6 @@ class Agent(ABC):
         with open(log_file, "w") as f:
             yaml.safe_dump(log_data, f, default_flow_style=False, allow_unicode=True)
 
+        # Add status based on error
+        result["status"] = "success" if error_msg is None else "error"
         return result

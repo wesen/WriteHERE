@@ -11,6 +11,8 @@ import dill as pickle
 import json
 from loguru import logger
 from recursive.common.log_typing import log_typing
+import time  # For timing steps
+from recursive.utils.event_bus import emit_step_started, emit_step_finished
 
 
 class GraphRunEngine:
@@ -146,6 +148,7 @@ class GraphRunEngine:
     @log_typing
     def forward_one_step_not_parallel(
         self,
+        step: int,
         full_step: bool = False,
         select_node_hashkey: Optional[str] = None,
         log_fn: Optional[str] = None,
@@ -163,6 +166,7 @@ class GraphRunEngine:
         5. Optionally logs the graph state and saves the node structure.
 
         Args:
+            step (int): The step number in the execution process.
             full_step (bool, optional): Whether to execute the node's full action step. Defaults to False.
             select_node_hashkey (str, optional): If provided, forces execution of the node with this hashkey. Defaults to None.
             log_fn (str, optional): Path for logging graph visualization (not currently used effectively). Defaults to None.
@@ -177,7 +181,7 @@ class GraphRunEngine:
             Exception: If `select_node_hashkey` is provided but the specified node cannot be executed.
         """
         # Find tasks that need to enter the next step
-        need_next_step_node: Optional[Union[List[AbstractNode], AbstractNode]]
+        need_next_step_node: Optional[AbstractNode] = None
         if select_node_hashkey is not None:
             found_nodes = self.find_need_next_step_nodes(single=False)
             if found_nodes:
@@ -200,6 +204,7 @@ class GraphRunEngine:
         else:
             need_next_step_node = self.find_need_next_step_nodes(single=True)
 
+        step_start_time = time.monotonic()
         if need_next_step_node is None:
             logger.info("All Done")
             # display_graph(self.root_node.inner_graph, fn=log_fn)
@@ -212,6 +217,15 @@ class GraphRunEngine:
 
             return "done"
         logger.info("select node: {}".format(need_next_step_node.task_str()))
+
+        # --- Emit StepStarted ---
+        emit_step_started(
+            step=step,
+            node_id=need_next_step_node.hashkey,
+            node_goal=need_next_step_node.task_info.get("goal", "?"),
+            root_id=self.root_node.hashkey,
+        )
+
         # Execute the next step for this node
         # Update Memory
         self.memory.update_infos([need_next_step_node])
@@ -244,6 +258,15 @@ class GraphRunEngine:
         # After the action ends, update the entire graph status. When in parallel, should wait for all parallel tasks to complete before executing uniformly
         self.forward_exam(self.root_node, verbose)
 
+        # --- Emit StepFinished ---
+        step_duration = time.monotonic() - step_start_time
+        emit_step_finished(
+            step=step,
+            node_id=need_next_step_node.hashkey,
+            action_name=action_name,
+            status_after=need_next_step_node.status.name,
+            duration=step_duration,
+        )
         if verbose:
             display_plan(self.root_node.inner_graph)
         return None  # Explicitly return None if not done
@@ -284,6 +307,7 @@ class GraphRunEngine:
         for step in range(10000):
             logger.info("Step {}".format(step))
             ret = self.forward_one_step_not_parallel(
+                step=step,
                 full_step=False,  # Note: full_step arg passed from here seems ignored in the call above
                 log_fn="logs/temp/{}".format(step),
                 nodes_json_file=nodes_json_file,  # Pass directly, internal method handles logic

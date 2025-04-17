@@ -134,6 +134,7 @@ def get_llm_output(
         prompt=prompt,
         parse_arg_dict=inner_kwargs["parse_arg_dict"],
         overwrite_cache=overwrite_cache,
+        node=node,
         **inner_kwargs.get("llm_args", {})
     )
     return llm_result
