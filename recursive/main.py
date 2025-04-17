@@ -4,7 +4,6 @@ import uuid  # For run ID
 
 from recursive.report_writing import report_writing
 from recursive.story_writing import story_writing
-from recursive.utils.ws_server import start_ws_thread
 from recursive.utils.event_bus import set_run_id
 
 # import agents to register them
@@ -54,6 +53,7 @@ if __name__ == "__main__":
     # Start the WebSocket server in a background thread (unless disabled)
     ws_thread = None
     if not args.no_ws_server:
+        from recursive.utils.ws_server import start_ws_thread
         ws_thread = start_ws_thread()
         print("WebSocket server thread started, UI available at http://localhost:9999")
     else:

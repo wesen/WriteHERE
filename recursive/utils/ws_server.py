@@ -3,12 +3,13 @@ import json
 import os
 import threading
 from typing import Set
+from pathlib import Path  # Added for path manipulation
 
 import redis.asyncio as aredis
 import uvicorn
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse  # For serving the UI directly
-from fastapi.staticfiles import StaticFiles  # Optional: For serving UI assets
+from fastapi.responses import HTMLResponse, FileResponse  # Added FileResponse
+from fastapi.staticfiles import StaticFiles
 
 # --- Configuration ---
 # Reuse stream name from event_bus or define separately
@@ -18,10 +19,11 @@ REDIS_URL = os.getenv(
 )  # Use URL format for async client
 WS_HOST = os.getenv("WS_HOST", "0.0.0.0")
 WS_PORT = int(os.getenv("WS_PORT", 9999))
-# Construct the path relative to this file's location
-UI_FILE_PATH = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "ui", "index.html"
-)  # Path to UI html
+
+# Calculate path to the React build directory relative to this file
+# ws_server.py -> utils -> recursive -> ROOT -> ui-react/dist
+REACT_BUILD_DIR = Path(__file__).parent.parent.parent / "ui-react" / "dist"
+REACT_INDEX_FILE = REACT_BUILD_DIR / "index.html"
 
 # Global set to keep track of active WebSocket connections
 active_connections: Set[WebSocket] = set()
@@ -65,7 +67,7 @@ async def redis_listener(redis_client: aredis.Redis):
                                 f"Warning: Received message {message_id} without 'json_payload' field."
                             )
 
-        except aredis.exceptions.ConnectionError as e:
+        except redis.exceptions.ConnectionError as e:
             print(
                 f"Redis connection error in listener: {e}. Attempting to reconnect..."
             )
@@ -93,42 +95,44 @@ async def startup_event():
 
 app = FastAPI(on_startup=[startup_event])
 
-# Optional: Mount static files directory if UI has separate CSS/JS
-# ui_dir = os.path.join(os.path.dirname(__file__), "..", "..", "ui")
-# if os.path.exists(ui_dir):
-#     app.mount("/static", StaticFiles(directory=ui_dir), name="static")
+# --- Serve React App Static Files ---
+# Mount the 'assets' directory first if it exists (Vite specific)
+assets_dir = REACT_BUILD_DIR / "assets"
+if assets_dir.exists() and assets_dir.is_dir():
+    app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
+    print(f"Serving static assets from: {assets_dir}")
 
 
-# Serve the minimal HTML UI from the root path
-@app.get("/")
-async def get_ui():
-    try:
-        # Check if the file exists before opening
-        if not os.path.exists(UI_FILE_PATH):
-            print(f"UI file not found at expected path: {UI_FILE_PATH}")
-            return HTMLResponse(
-                content="<html><body><h1>UI file not found</h1><p>Expected at: {}</p></body></html>".format(
-                    UI_FILE_PATH
-                ),
-                status_code=404,
-            )
+@app.get("/api/events")
+async def get_events():
+    """Dummy endpoint for initial event fetch."""
+    return {"events": [], "status": "connected"}
 
-        with open(UI_FILE_PATH, "r") as f:
-            html_content = f.read()
-        return HTMLResponse(content=html_content)
-    except FileNotFoundError:
-        # This might be redundant due to the exists check, but good practice
-        print(f"Error: UI file not found at {UI_FILE_PATH} (FileNotFoundError)")
+
+# Serve the main index.html for the root path and any other unhandled paths
+# This allows React Router (if used) to handle client-side routing.
+@app.get("/{full_path:path}")
+async def serve_react_app(full_path: str):
+    print(f"Request for path: {full_path}")
+    # Check if the requested path corresponds to a file in the build directory
+    potential_file = REACT_BUILD_DIR / full_path
+    if potential_file.exists() and potential_file.is_file():
+        print(f"Serving specific file: {potential_file}")
+        return FileResponse(potential_file)
+
+    # If it's not a specific file or doesn't exist, serve index.html
+    if REACT_INDEX_FILE.exists():
+        print(f"Serving index.html: {REACT_INDEX_FILE}")
+        return FileResponse(REACT_INDEX_FILE)
+    else:
+        print(f"Error: React index.html not found at {REACT_INDEX_FILE}")
         return HTMLResponse(
-            content="<html><body><h1>UI file not found</h1></body></html>",
+            content=f"<html><body><h1>React App Not Found</h1><p>Build directory not found or index.html missing at {REACT_INDEX_FILE}. Run 'npm run build' in ui-react.</p></body></html>",
             status_code=404,
         )
-    except Exception as e:
-        print(f"Error loading UI from {UI_FILE_PATH}: {e}")
-        return HTMLResponse(
-            content=f"<html><body><h1>Error loading UI: {e}</h1></body></html>",
-            status_code=500,
-        )
+
+
+# --- End Serve React App ---
 
 
 @app.websocket("/ws/events")
@@ -154,6 +158,13 @@ async def websocket_endpoint(websocket: WebSocket):
 def run_server():
     """Runs the Uvicorn server."""
     print(f"Starting Uvicorn server on {WS_HOST}:{WS_PORT}")
+    print(f"React UI build directory expected at: {REACT_BUILD_DIR}")
+    if not REACT_INDEX_FILE.exists():
+        print("\nWARNING: React index.html not found!")
+        print(f"Expected path: {REACT_INDEX_FILE}")
+        print("Please build the React app first by running:")
+        print("  cd ui-react && npm install && npm run build")
+        print("Server will start, but UI will show an error.\n")
     uvicorn.run(app, host=WS_HOST, port=WS_PORT, log_level="info")
 
 
