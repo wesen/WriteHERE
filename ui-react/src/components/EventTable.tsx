@@ -1,8 +1,10 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useGetEventsQuery, ConnectionStatus, AgentEvent } from '../features/events/eventsApi';
 import { Table, Spinner, Alert, Badge } from 'react-bootstrap';
 import { Play, CheckCircle, ArrowRight, Clock, Zap, Database, Search, AlertCircle } from 'lucide-react';
 import { isEventType } from '../helpers/eventType'; // Import the type guard
+import EventDetailModal from './EventDetailModal';
+import './styles.css'; // We'll add a separate styles file
 
 // Helper function to extract common IDs or return N/A
 const getEventStep = (event: AgentEvent): number | string => {
@@ -155,9 +157,22 @@ const EventTable: React.FC = () => {
     const { data, error, isLoading } = useGetEventsQuery(undefined, {
         // pollingInterval: 30000, 
     });
+    const [selectedEvent, setSelectedEvent] = useState<AgentEvent | null>(null);
+    const [showModal, setShowModal] = useState(false);
 
     const events = data?.events ?? [];
     const status = data?.status ?? ConnectionStatus.Connecting;
+
+    // Handle opening the modal with a specific event
+    const handleEventClick = (event: AgentEvent) => {
+        setSelectedEvent(event);
+        setShowModal(true);
+    };
+
+    // Handle closing the modal
+    const handleCloseModal = () => {
+        setShowModal(false);
+    };
 
     if (isLoading && !data) {
         return <Spinner animation="border" role="status" className="d-block mx-auto mt-5"><span className="visually-hidden">Loading...</span></Spinner>;
@@ -205,7 +220,12 @@ const EventTable: React.FC = () => {
                         const IconComponent = config.icon;
                         
                         return (
-                            <tr key={event.event_id} style={{ verticalAlign: 'middle' }}>
+                            <tr 
+                                key={event.event_id} 
+                                style={{ verticalAlign: 'middle', cursor: 'pointer' }}
+                                onClick={() => handleEventClick(event)}
+                                className="event-row"
+                            >
                                 <td className="px-3 py-2 text-muted small text-nowrap">{formatTimestamp(event.timestamp)}</td>
                                 <td className="px-3 py-2">
                                     <Badge pill bg={config.bsVariant} text={config.bsTextColor as ("primary" | "secondary" | "success" | "danger" | "warning" | "info" | "light" | "dark")} className="d-inline-flex align-items-center fw-medium">
@@ -224,6 +244,13 @@ const EventTable: React.FC = () => {
                     })}
                 </tbody>
             </Table>
+
+            {/* Event Detail Modal */}
+            <EventDetailModal 
+                show={showModal} 
+                onHide={handleCloseModal} 
+                event={selectedEvent} 
+            />
         </>
     );
 };

@@ -1,0 +1,43 @@
+/* Event table styles */
+.event-row {
+  transition: background-color 0.2s ease;
+}
+
+.event-row:hover {
+  background-color: rgba(0, 123, 255, 0.08);
+}
+
+/* Modal styles */
+.tab-content {
+  min-height: 300px;
+}
+
+pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Prompt message styles */
+.message {
+  border: 1px solid #dee2e6;
+}
+
+.message-system {
+  background-color: #f8f9fa;
+  border-left: 4px solid #6c757d;
+}
+
+.message-user {
+  background-color: #e9f2ff;
+  border-left: 4px solid #0d6efd;
+}
+
+.message-assistant {
+  background-color: #f0fff4;
+  border-left: 4px solid #198754;
+}
+
+.message-function {
+  background-color: #fff4e6;
+  border-left: 4px solid #fd7e14;
+} 
