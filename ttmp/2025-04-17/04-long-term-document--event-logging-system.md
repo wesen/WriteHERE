@@ -110,7 +110,7 @@ Emitted when a node's status transitions to a new state. The status values come 
 
 #### 4. `llm_call_started`
 
-Emitted when the agent initiates an LLM call. The agent class is the name of the agent class (e.g., `SimpleExecutor`, `FinalAggregateAgent`).
+Emitted when the agent initiates an LLM call. Includes the current execution step number. The agent class is the name of the agent class (e.g., `SimpleExecutor`, `FinalAggregateAgent`). The full prompt is included as a list of message objects.
 
 ```json
 {
@@ -118,7 +118,15 @@ Emitted when the agent initiates an LLM call. The agent class is the name of the
   "payload": {
     "agent_class": "SimpleExecutor",
     "model": "gpt-4o",
-    "prompt_preview": "Given the following information, generate a conclusion paragraph that...",
+    "prompt_preview": "...",
+    "prompt": [
+      { "role": "system", "content": "You are a helpful assistant." },
+      {
+        "role": "user",
+        "content": "Given the following information, generate a conclusion paragraph..."
+      }
+    ],
+    "step": 51,
     "node_id": "node-uuid-string"
   }
 }
@@ -129,7 +137,7 @@ Emitted when the agent initiates an LLM call. The agent class is the name of the
 
 #### 5. `llm_call_completed`
 
-Emitted when an LLM call completes with results or errors.
+Emitted when an LLM call completes with results or errors. Includes the current execution step number and the full response content.
 
 ```json
 {
@@ -138,7 +146,9 @@ Emitted when an LLM call completes with results or errors.
     "agent_class": "SimpleExecutor",
     "model": "gpt-4o",
     "duration_seconds": 2.34,
-    "result_summary": "The analysis of customer feedback reveals three primary concerns...",
+    "result_summary": "...",
+    "response": "The analysis of customer feedback reveals three primary concerns: product usability, customer support responsiveness, and pricing clarity. Addressing these areas proactively can significantly enhance user satisfaction.",
+    "step": 51,
     "token_usage": {
       "prompt_tokens": 1234,
       "completion_tokens": 567
@@ -201,6 +211,24 @@ The `EventBus` class in `recursive/utils/event_bus.py` is responsible for publis
 - Helper methods like `emit_step_started()`, `emit_llm_call_completed()`, etc., that create and publish specific event types
 
 ## Instrumentation Points in Code
+
+Events are emitted from various key points in the agent's execution flow. To ensure contextual information like the execution `step` number is available when needed (e.g., for LLM call events), an `ExecutionContext` object (`recursive/common/context.py`) is used.
+
+### Propagating ExecutionContext
+
+The context, primarily containing the `step` number, is propagated down the call stack as follows:
+
+1.  **`GraphRunEngine.forward_one_step_not_parallel`**: Receives the `step` number as an argument. Creates an `ExecutionContext` instance (`ctx`) containing this step number.
+2.  **Call to `AbstractNode.next_action_step`**: The engine passes the `ctx` object to the `next_action_step` method of the selected node.
+3.  **`AbstractNode.next_action_step`**: This method accepts the `ctx` object. It determines the correct action (e.g., "plan", "execute") and calls `self.do_action`, passing the `ctx` along.
+4.  **`AbstractNode.do_action`**: This method accepts the `ctx` object. It retrieves the appropriate agent using `AgentProxy` and then calls the specific action method implemented _on the node subclass_ (e.g., `RegularDummyNode.plan`), passing the `agent`, `memory`, and `ctx`.
+5.  **Node Subclass Action Method (e.g., `RegularDummyNode.plan`)**: This method accepts the `ctx` object. It then calls the corresponding agent's `forward` method, passing `self` (the node), `memory`, and the `ctx` object.
+6.  **Agent `forward` Method (e.g., `SimpleExecutor.forward`)**: Accepts the `ctx` object. If this agent needs to make an LLM call, it passes the `ctx` object to helper functions like `get_llm_output` or directly to `self.call_llm`.
+7.  **`Agent.call_llm`**: Accepts the `ctx` object. It extracts the `step` number from `ctx` and passes it to `emit_llm_call_started` and `emit_llm_call_completed`.
+
+This explicit passing ensures the `step` number is available deep within the agent logic for event emission without relying on global state.
+
+### Event Emission Table
 
 | Event Type            | File                                           | Method                          | Description                   |
 | --------------------- | ---------------------------------------------- | ------------------------------- | ----------------------------- |
@@ -273,6 +301,7 @@ The event monitoring UI has been rebuilt using React, Redux Toolkit, and Bootstr
    - Track `llm_call_started` and `llm_call_completed` events
    - Calculate response times from timestamps
    - Extract token usage from `llm_call_completed` payloads
+   - Display full prompt/response content (consider UI handling for long text)
 
 4. **Progress Dashboard**: Show overall completion percentage, time spent in different phases, estimated time to completion.
 
