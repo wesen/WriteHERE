@@ -10,6 +10,8 @@ from typing import Any, Dict, Optional, List
 import redis
 from pydantic import BaseModel, Field
 
+from recursive.common.context import ExecutionContext
+
 # --- Configuration ---
 REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
 REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
@@ -51,7 +53,14 @@ class EventType(str, Enum):
     LLM_CALL_COMPLETED = "llm_call_completed"
     TOOL_INVOKED = "tool_invoked"
     TOOL_RETURNED = "tool_returned"
-    # Add more specific events if needed, e.g., SEARCH_COMPLETED
+
+    # --- New Types ---
+    NODE_CREATED = "node_created"
+    PLAN_RECEIVED = "plan_received"
+    NODE_ADDED = "node_added"
+    EDGE_ADDED = "edge_added"
+    INNER_GRAPH_BUILT = "inner_graph_built"
+    NODE_RESULT_AVAILABLE = "node_result_available"
 
 
 # --- Base Event Model ---
@@ -253,3 +262,119 @@ def emit_tool_returned(
     if node_id:
         payload["node_id"] = node_id
     bus.publish(_create_event(EventType.TOOL_RETURNED, payload))
+
+
+# --- NEW EMITTERS ---
+
+
+def emit_node_created(
+    node_id: str,
+    node_nid: str,
+    node_type: str,
+    task_type: str,
+    task_goal: str,
+    layer: int,
+    outer_node_id: Optional[str],
+    root_node_id: str,
+    initial_parent_nids: List[str],
+    ctx: Optional[ExecutionContext] = None,
+):
+    payload = {
+        "node_id": node_id,
+        "node_nid": node_nid,
+        "node_type": node_type,
+        "task_type": task_type,
+        "task_goal": task_goal,
+        "layer": layer,
+        "outer_node_id": outer_node_id,
+        "root_node_id": root_node_id,
+        "initial_parent_nids": initial_parent_nids,
+    }
+    if ctx is not None and ctx.step is not None:
+        payload["step"] = ctx.step
+
+    bus.publish(_create_event(EventType.NODE_CREATED, payload))
+
+
+def emit_plan_received(
+    node_id: str,
+    raw_plan: List[Dict],
+    ctx: Optional[ExecutionContext] = None,
+):
+    payload = {
+        "node_id": node_id,
+        "raw_plan": raw_plan,
+    }
+    if ctx is not None and ctx.step is not None:
+        payload["step"] = ctx.step
+    bus.publish(_create_event(EventType.PLAN_RECEIVED, payload))
+
+
+def emit_node_added(
+    graph_owner_node_id: str,
+    added_node_id: str,
+    added_node_nid: str,
+    ctx: Optional[ExecutionContext] = None,
+):
+    payload = {
+        "graph_owner_node_id": graph_owner_node_id,
+        "added_node_id": added_node_id,
+        "added_node_nid": added_node_nid,
+    }
+    if ctx is not None and ctx.step is not None:
+        payload["step"] = ctx.step
+    bus.publish(_create_event(EventType.NODE_ADDED, payload))
+
+
+def emit_edge_added(
+    graph_owner_node_id: str,
+    parent_node_id: str,
+    child_node_id: str,
+    parent_node_nid: str,
+    child_node_nid: str,
+    ctx: Optional[ExecutionContext] = None,
+):
+    payload = {
+        "graph_owner_node_id": graph_owner_node_id,
+        "parent_node_id": parent_node_id,
+        "child_node_id": child_node_id,
+        "parent_node_nid": parent_node_nid,
+        "child_node_nid": child_node_nid,
+    }
+    if ctx is not None and ctx.step is not None:
+        payload["step"] = ctx.step
+    bus.publish(_create_event(EventType.EDGE_ADDED, payload))
+
+
+def emit_inner_graph_built(
+    node_id: str,
+    node_count: int,
+    edge_count: int,
+    node_ids: List[str],
+    ctx: Optional[ExecutionContext] = None,
+):
+    payload = {
+        "node_id": node_id,
+        "node_count": node_count,
+        "edge_count": edge_count,
+        "node_ids": node_ids,
+    }
+    if ctx is not None and ctx.step is not None:
+        payload["step"] = ctx.step
+    bus.publish(_create_event(EventType.INNER_GRAPH_BUILT, payload))
+
+
+def emit_node_result_available(
+    node_id: str,
+    action_name: str,
+    result_summary: str,
+    ctx: Optional[ExecutionContext] = None,
+):
+    payload = {
+        "node_id": node_id,
+        "action_name": action_name,
+        "result_summary": result_summary[:500] + "...",
+    }
+    if ctx is not None and ctx.step is not None:
+        payload["step"] = ctx.step
+    bus.publish(_create_event(EventType.NODE_RESULT_AVAILABLE, payload))

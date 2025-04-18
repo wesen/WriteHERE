@@ -1,15 +1,22 @@
 import React, { useState } from 'react';
 import { useGetEventsQuery, ConnectionStatus, AgentEvent } from '../features/events/eventsApi';
 import { Table, Spinner, Alert, Badge } from 'react-bootstrap';
-import { Play, CheckCircle, ArrowRight, Clock, Zap, Database, Search, AlertCircle } from 'lucide-react';
+import { Play, CheckCircle, ArrowRight, Clock, Zap, Database, Search, AlertCircle, GitCommit, FileCode, Network, PlusCircle, GitFork, FileText } from 'lucide-react';
 import { isEventType } from '../helpers/eventType'; // Import the type guard
 import EventDetailModal from './EventDetailModal';
 import './styles.css'; // We'll add a separate styles file
 
 // Helper function to extract common IDs or return N/A
 const getEventStep = (event: AgentEvent): number | string => {
-    if (isEventType('step_started')(event) || isEventType('step_finished')(event)) {
-        return event.payload.step;
+    if (isEventType('step_started')(event) || 
+        isEventType('step_finished')(event) ||
+        isEventType('node_created')(event) ||
+        isEventType('plan_received')(event) ||
+        isEventType('node_added')(event) ||
+        isEventType('edge_added')(event) ||
+        isEventType('inner_graph_built')(event) ||
+        isEventType('node_result_available')(event)) {
+        return event.payload.step ?? 'N/A';
     }
     return 'N/A';
 }
@@ -21,9 +28,25 @@ const getEventNodeId = (event: AgentEvent): string => {
         isEventType('llm_call_started')(event) ||
         isEventType("llm_call_completed")(event) ||
         isEventType("tool_invoked")(event) ||
-        isEventType("tool_returned")(event)) {
+        isEventType("tool_returned")(event) ||
+        isEventType("node_created")(event) ||
+        isEventType("plan_received")(event) ||
+        isEventType("node_result_available")(event)) {
         return event.payload.node_id?.substring(0, 8) || 'N/A';
     }
+    
+    if (isEventType("node_added")(event)) {
+        return event.payload.added_node_id?.substring(0, 8) || 'N/A';
+    }
+    
+    if (isEventType("edge_added")(event)) {
+        return `${event.payload.parent_node_id?.substring(0, 4)}→${event.payload.child_node_id?.substring(0, 4)}` || 'N/A';
+    }
+    
+    if (isEventType("inner_graph_built")(event)) {
+        return event.payload.node_id?.substring(0, 8) || 'N/A';
+    }
+    
     return 'N/A';
 }
 
@@ -37,6 +60,15 @@ const eventTypeConfig = {
     tool_invoked: { icon: Database, color: 'text-indigo-500', bgColor: 'bg-indigo-100', bsVariant: 'secondary-subtle', bsTextColor: 'secondary' }, // Changed to secondary
     tool_returned: { icon: Database, color: 'text-indigo-700', bgColor: 'bg-indigo-100', bsVariant: 'secondary-subtle', bsTextColor: 'secondary' }, // Keep same as invoked
     search_completed: { icon: Search, color: 'text-blue-700', bgColor: 'bg-blue-100', bsVariant: 'primary-subtle', bsTextColor: 'primary' }, // Reuse primary
+    
+    // New event types
+    node_created: { icon: GitCommit, color: 'text-purple-600', bgColor: 'bg-purple-100', bsVariant: 'purple-subtle', bsTextColor: 'info' },
+    plan_received: { icon: FileCode, color: 'text-teal-600', bgColor: 'bg-teal-100', bsVariant: 'info-subtle', bsTextColor: 'info' },
+    node_added: { icon: PlusCircle, color: 'text-green-600', bgColor: 'bg-green-100', bsVariant: 'success-subtle', bsTextColor: 'success' },
+    edge_added: { icon: GitFork, color: 'text-indigo-600', bgColor: 'bg-indigo-100', bsVariant: 'secondary-subtle', bsTextColor: 'secondary' },
+    inner_graph_built: { icon: Network, color: 'text-blue-600', bgColor: 'bg-blue-100', bsVariant: 'primary-subtle', bsTextColor: 'primary' },
+    node_result_available: { icon: FileText, color: 'text-orange-600', bgColor: 'bg-orange-100', bsVariant: 'warning-subtle', bsTextColor: 'warning' },
+    
     default: { icon: AlertCircle, color: 'text-gray-500', bgColor: 'bg-gray-100', bsVariant: 'light', bsTextColor: 'dark' }
 };
 
@@ -140,6 +172,60 @@ function renderPayloadDetails(event: AgentEvent): React.ReactNode {
                 State: <span className={`fw-medium ${event.payload.state === 'SUCCESS' ? 'text-success' : 'text-danger'}`}>{event.payload.state}</span>,
                 Duration: <span className="fw-medium">{event.payload.duration_seconds?.toFixed(2)}s</span>
                 {event.payload.error && <div className="text-danger small mt-1">Error: {event.payload.error}</div>}
+            </div>
+        );
+    }
+
+    // New event type handlers
+    if (isEventType("node_created")(event)) {
+        return (
+            <div className="text-truncate" style={{ maxWidth: '500px' }}>
+                NID: <span className="fw-medium">{event.payload.node_nid}</span>,
+                Type: <span className="fw-medium">{event.payload.node_type}</span>,
+                Task: <span className="fw-medium">{event.payload.task_type}</span>,
+                Layer: <span className="fw-medium">{event.payload.layer}</span>
+            </div>
+        );
+    }
+
+    if (isEventType("plan_received")(event)) {
+        const planLength = event.payload.raw_plan?.length || 0;
+        return (
+            <div className="text-truncate" style={{ maxWidth: '500px' }}>
+                Plan with <span className="fw-medium">{planLength}</span> task(s)
+            </div>
+        );
+    }
+
+    if (isEventType("node_added")(event)) {
+        return (
+            <div className="text-truncate" style={{ maxWidth: '500px' }}>
+                Node <span className="fw-medium">{event.payload.added_node_nid}</span> added to graph
+            </div>
+        );
+    }
+
+    if (isEventType("edge_added")(event)) {
+        return (
+            <div className="text-truncate" style={{ maxWidth: '500px' }}>
+                Edge: <span className="fw-medium">{event.payload.parent_node_nid}</span> → <span className="fw-medium">{event.payload.child_node_nid}</span>
+            </div>
+        );
+    }
+
+    if (isEventType("inner_graph_built")(event)) {
+        return (
+            <div className="text-truncate" style={{ maxWidth: '500px' }}>
+                Graph built with <span className="fw-medium">{event.payload.node_count}</span> nodes and <span className="fw-medium">{event.payload.edge_count}</span> edges
+            </div>
+        );
+    }
+
+    if (isEventType("node_result_available")(event)) {
+        return (
+            <div className="text-truncate" style={{ maxWidth: '500px' }}>
+                Action: <span className="fw-medium">{event.payload.action_name}</span>,
+                Result: <span className="text-muted small">{event.payload.result_summary.substring(0, 100)}...</span>
             </div>
         );
     }

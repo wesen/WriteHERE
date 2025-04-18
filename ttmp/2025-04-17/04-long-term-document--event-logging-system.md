@@ -49,7 +49,7 @@ All events follow a common base schema (`Event` class in `recursive/utils/event_
 
 ### Event Types and Payloads
 
-The system currently emits 7 types of events, all defined in the `EventType` enum in `recursive/utils/event_bus.py`:
+The system emits 13 types of events, all defined in the `EventType` enum in `recursive/utils/event_bus.py`:
 
 #### 1. `step_started`
 
@@ -202,6 +202,122 @@ Emitted when a tool execution completes. The state comes from `recursive/executo
 **Emission point**: `emit_tool_returned()` in file `recursive/executor/action/action_executor.py` in the `__call__()` method
 **Status values**: Defined in `recursive/executor/schema.py` as `ActionStatusCode` enum (e.g., `SUCCESS`, `ING`, `HTTP_ERROR`, `ARGS_ERROR`, `API_ERROR`)
 
+#### 8. `node_created`
+
+Emitted when an `AbstractNode` is instantiated.
+
+```json
+{
+  "event_type": "node_created",
+  "payload": {
+    "node_id": "uuid-string", // The node's hashkey
+    "node_nid": "1.2", // Human-readable ID
+    "node_type": "PLAN_NODE" | "EXECUTE_NODE",
+    "task_type": "COMPOSITION" | "REASONING" | "RETRIEVAL" | "GENERAL",
+    "task_goal": "Goal description...",
+    "layer": 2,
+    "outer_node_id": "uuid-string" | null, // Hashkey of the container node
+    "root_node_id": "uuid-string", // Hashkey of the root
+    "initial_parent_nids": ["1.1", "0.3"], // From raw plan, before resolution
+    "step": 42 // Optional: If created during a step
+  }
+}
+```
+
+**Emission point**: `emit_node_created()` in file `recursive/node/abstract.py` at the end of `__init__()` method.
+
+#### 9. `plan_received`
+
+Emitted when a node receives a raw plan (before graph building).
+
+```json
+{
+  "event_type": "plan_received",
+  "payload": {
+    "node_id": "uuid-string", // Node receiving the plan
+    "raw_plan": [{"id": "1.1", "goal": "...", ...}], // Full raw plan (Note: might be large)
+    "step": 42 // Optional: If plan received during a step
+  }
+}
+```
+
+**Emission point**: `emit_plan_received()` in file `recursive/node/abstract.py` at the beginning of `plan2graph()` method.
+
+#### 10. `node_added`
+
+Emitted when a node is added to a `Graph` instance (specifically, an `inner_graph`).
+
+```json
+{
+  "event_type": "node_added",
+  "payload": {
+    "graph_owner_node_id": "uuid-string", // Node whose inner_graph this is
+    "added_node_id": "uuid-string", // Hashkey of the node being added
+    "added_node_nid": "1.3",
+    "step": 42 // Optional: If added during a step
+  }
+}
+```
+
+**Emission point**: `emit_node_added()` in file `recursive/graph.py` in the `add_node()` method.
+
+#### 11. `edge_added`
+
+Emitted when an edge (dependency) is added between nodes in a `Graph` instance.
+
+```json
+{
+  "event_type": "edge_added",
+  "payload": {
+    "graph_owner_node_id": "uuid-string", // Node whose inner_graph this is
+    "parent_node_id": "uuid-string", // Hashkey of the parent node
+    "child_node_id": "uuid-string", // Hashkey of the child node
+    "parent_node_nid": "1.2",
+    "child_node_nid": "1.3",
+    "step": 42 // Optional: If added during a step
+  }
+}
+```
+
+**Emission point**: `emit_edge_added()` in file `recursive/graph.py` in the `add_edge()` method.
+
+#### 12. `inner_graph_built`
+
+Emitted when a node finishes constructing its `inner_graph` from a plan.
+
+```json
+{
+  "event_type": "inner_graph_built",
+  "payload": {
+    "node_id": "uuid-string", // Node whose inner graph was built
+    "node_count": 5,
+    "edge_count": 4,
+    "node_ids": ["uuid1", "uuid2", ...], // List of hashkeys in the graph
+    "step": 42 // Optional: If built during a step
+  }
+}
+```
+
+**Emission point**: `emit_inner_graph_built()` in file `recursive/node/abstract.py` at the end of `plan2graph()` method.
+
+#### 13. `node_result_available`
+
+Emitted when a node computes its final result (typically via `do_action`).
+
+```json
+{
+  "event_type": "node_result_available",
+  "payload": {
+    "node_id": "uuid-string",
+    "action_name": "execute" | "final_aggregate" | "plan", // Action producing the result
+    "result_summary": "Truncated result...",
+    "step": 42 // Optional: If result generated during a step
+  }
+}
+```
+
+**Emission point**: `emit_node_result_available()` in file `recursive/node/abstract.py` at the end of `do_action()` method (after result is stored).
+
 ## Event Bus Implementation
 
 The `EventBus` class in `recursive/utils/event_bus.py` is responsible for publishing events to Redis. The key methods are:
@@ -230,15 +346,21 @@ This explicit passing ensures the `step` number is available deep within the age
 
 ### Event Emission Table
 
-| Event Type            | File                                           | Method                          | Description                   |
-| --------------------- | ---------------------------------------------- | ------------------------------- | ----------------------------- |
-| `step_started`        | `recursive/engine.py`                          | `forward_one_step_not_parallel` | Beginning of a step execution |
-| `step_finished`       | `recursive/engine.py`                          | `forward_one_step_not_parallel` | End of a step execution       |
-| `node_status_changed` | `recursive/node/abstract.py`                   | `do_exam`                       | When a node changes status    |
-| `llm_call_started`    | `recursive/agent/base.py`                      | `call_llm`                      | Before LLM API call           |
-| `llm_call_completed`  | `recursive/agent/base.py`                      | `call_llm`                      | After LLM API call            |
-| `tool_invoked`        | `recursive/executor/action/action_executor.py` | `__call__`                      | Before tool execution         |
-| `tool_returned`       | `recursive/executor/action/action_executor.py` | `__call__`                      | After tool execution          |
+| Event Type              | File                                           | Method                          | Description                   |
+| ----------------------- | ---------------------------------------------- | ------------------------------- | ----------------------------- |
+| `step_started`          | `recursive/engine.py`                          | `forward_one_step_not_parallel` | Beginning of a step execution |
+| `step_finished`         | `recursive/engine.py`                          | `forward_one_step_not_parallel` | End of a step execution       |
+| `node_status_changed`   | `recursive/node/abstract.py`                   | `do_exam`                       | When a node changes status    |
+| `llm_call_started`      | `recursive/agent/base.py`                      | `call_llm`                      | Before LLM API call           |
+| `llm_call_completed`    | `recursive/agent/base.py`                      | `call_llm`                      | After LLM API call            |
+| `tool_invoked`          | `recursive/executor/action/action_executor.py` | `__call__`                      | Before tool execution         |
+| `tool_returned`         | `recursive/executor/action/action_executor.py` | `__call__`                      | After tool execution          |
+| `node_created`          | `recursive/node/abstract.py`                   | `__init__`                      | Node instantiation            |
+| `plan_received`         | `recursive/node/abstract.py`                   | `plan2graph`                    | Start of graph building       |
+| `node_added`            | `recursive/graph.py`                           | `add_node`                      | Node added to inner graph     |
+| `edge_added`            | `recursive/graph.py`                           | `add_edge`                      | Edge added to inner graph     |
+| `inner_graph_built`     | `recursive/node/abstract.py`                   | `plan2graph`                    | End of graph building         |
+| `node_result_available` | `recursive/node/abstract.py`                   | `do_action`                     | Node action produced result   |
 
 ## WebSocket Server Implementation
 
@@ -282,11 +404,40 @@ python -m recursive.main --no-ws-server --mode report --filename input.jsonl --o
 
 The event monitoring UI has been rebuilt using React, Redux Toolkit, and Bootstrap, located in the `ui-react/` directory. It provides a real-time table view of events similar to the previous basic UI but with a more robust foundation.
 
+### Frontend Implementation for Node/Graph Events
+
+The frontend has been updated to support all node and graph lifecycle events:
+
+1. **Type Definitions**: `ui-react/src/features/events/eventsApi.ts`
+
+   - Added TypeScript interfaces for all new event payload types
+   - Updated `KnownEventType` union to include new event types
+   - Extended `AgentEvent` union with new event variants
+
+2. **Event Table UI**: `ui-react/src/components/EventTable.tsx`
+
+   - Enhanced `getEventStep` and `getEventNodeId` helpers to extract data from new events
+   - Added icon mappings for new event types with appropriate visual styling:
+     - `node_created`: GitCommit icon (purple)
+     - `plan_received`: FileCode icon (teal)
+     - `node_added`: PlusCircle icon (green)
+     - `edge_added`: GitFork icon (indigo)
+     - `inner_graph_built`: Network icon (blue)
+     - `node_result_available`: FileText icon (orange)
+   - Implemented custom renderers for each new event type's details
+
+3. **Type Guards**: No changes needed to `ui-react/src/helpers/eventType.ts`
+   - Existing type guard pattern automatically supports new event types
+
+This frontend implementation enables real-time visualization of the graph building process, showing how nodes and edges are created and connected during the execution of the agent.
+
 ### Visualization Ideas
 
 1. **Graph Visualization**: Display the task graph with nodes colored by status. Update in real-time as nodes change state.
 
    - Use `node_status_changed` events to update node colors
+   - Use `node_created`, `node_added`, and `edge_added` events to incrementally build the graph visualization
+   - Use `inner_graph_built` events to validate the graph structure
    - Node IDs in events can be used to identify graph nodes
    - Status values come from `TaskStatus` enum in `recursive/common/enums.py`
 
@@ -309,8 +460,13 @@ The event monitoring UI has been rebuilt using React, Redux Toolkit, and Bootstr
    - Use step timestamps to estimate remaining time
 
 5. **Execution Flow**: Visualize the sequence of steps, tool invocations, and state transitions.
+
    - Create a directed graph of events
    - Show causal relationships between events
+
+6. **Graph Building Replay**: Using the new node/graph events, create a visualization that replays the graph construction process.
+   - Use timestamped `node_created`, `node_added`, and `edge_added` events to animate the construction
+   - Highlight the planning process by correlating with `plan_received` and `inner_graph_built` events
 
 ### Technical Guidelines
 
@@ -373,9 +529,10 @@ For more advanced visualizations, you might want to access the full node structu
 2. Use the `node_id` values from various events to build a graph structure
 3. The status changes in `node_status_changed` events can be used to update node states
 4. If available, monitor the `nodes.json` file specified by the `--nodes-json-file` option to get the full graph structure
+5. Combine `node_created`, `node_added`, and `edge_added` events to dynamically build a full graph representation
 
 ## Conclusion
 
-The event logging system provides a foundation for real-time monitoring and analytics of the Recursive Agent. By building enhanced visualizations on top of this system, developers can gain deeper insights into agent behavior, debug issues more effectively, and optimize agent performance.
+The event logging system provides a foundation for real-time monitoring and analytics of the Recursive Agent. By building enhanced visualizations on top of this system, developers can gain deeper insights into agent behavior, debug issues more effectively, and optimize agent performance. The new node and graph lifecycle events provide unprecedented visibility into the planning and graph building process, enabling more powerful visualization tools that can show how the agent's internal task graph evolves over time.
 
 For UI developers: the current UI implementation in `ui-react/` provides a functional table view example. Use this as a starting point for building more sophisticated UI components or visualizations.

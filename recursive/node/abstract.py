@@ -3,16 +3,22 @@ import uuid
 from abc import ABC, abstractmethod
 from copy import deepcopy
 from datetime import datetime
+from typing import Any, Optional, List, Dict
 
 from loguru import logger
 
 from recursive.agent.proxy import AgentProxy
 from recursive.common.enums import TaskStatus, NodeType
 from recursive.graph import Graph
-from recursive.utils.event_bus import emit_node_status_changed
+from recursive.utils.event_bus import (
+    emit_node_status_changed,
+    emit_node_created,
+    emit_plan_received,
+    emit_inner_graph_built,
+    emit_node_result_available,
+)
 from recursive.common.context import ExecutionContext
 from recursive.memory import Memory
-from typing import Any, Optional
 
 
 class AbstractNode(ABC):
@@ -44,7 +50,15 @@ class AbstractNode(ABC):
             str_obj = str(obj)
         return str_obj
 
-    def __init__(self, config, nid, node_graph_info, task_info, node_type=None):
+    def __init__(
+        self,
+        config,
+        nid,
+        node_graph_info,
+        task_info,
+        node_type=None,
+        ctx: Optional[ExecutionContext] = None,
+    ):
         """
         Initialize a new AbstractNode instance.
 
@@ -54,7 +68,7 @@ class AbstractNode(ABC):
             node_graph_info (dict): Information about the node's position and relationships in the graph:
                 - outer_node: The outer layer node to which it belongs
                 - root_node: The root node of the entire nested task
-                - parent_nodes: Dependent nodes of this node in the current Graph
+                - parent_nodes: Dependent nodes of this node in the current Graph (initially just NIDs/strs)
                 - layer: The layer number where this node is located, root is 0
             task_info (dict): Information about the task this node represents:
                 - goal: Task objective
@@ -63,10 +77,16 @@ class AbstractNode(ABC):
                 - verify_standard: Verification criteria
                 - task_type: Type of task (COMPOSITION, REASONING, RETRIEVAL)
             node_type (NodeType, optional): Type of the node (PLAN_NODE or EXECUTE_NODE).
+            ctx (ExecutionContext, optional): Execution context, primarily for step tracking.
         """
         self.config = config
         self.nid = nid
         self.hashkey = str(uuid.uuid4())
+        # Store original parent NIDs before they get replaced by node objects in plan2graph
+        # This requires node_graph_info["parent_nodes"] to initially be the list of NIDs/strings
+        self._initial_parent_nids = [
+            str(p_nid) for p_nid in node_graph_info.get("parent_nodes", [])
+        ]
         self.node_graph_info = node_graph_info
         self.task_info = task_info
         self.inner_graph = Graph(self)  # Internal Planning Graph
@@ -88,6 +108,22 @@ class AbstractNode(ABC):
 
         self.define_status()
         self.check_status_valid()
+
+        # --- Emit Event: node_created ---
+        outer_node = self.node_graph_info.get("outer_node")
+        root_node = self.node_graph_info.get("root_node")
+        emit_node_created(
+            node_id=self.hashkey,
+            node_nid=str(self.nid),
+            node_type=self.node_type.name if self.node_type else "UNKNOWN",
+            task_type=self.task_type_tag,
+            task_goal=self.task_info.get("goal", "N/A"),
+            layer=self.node_graph_info.get("layer", -1),
+            outer_node_id=outer_node.hashkey if outer_node else None,
+            root_node_id=root_node.hashkey if root_node else "UNKNOWN",
+            initial_parent_nids=self._initial_parent_nids,
+            ctx=ctx,
+        )
 
     @property
     def required_task_info_keys(self):
@@ -630,19 +666,29 @@ class AbstractNode(ABC):
         """
         return self.status in self.status_list["activate"]
 
-    def plan2graph(self, raw_plan):
+    def plan2graph(self, raw_plan: List[Dict], ctx: Optional[ExecutionContext] = None):
         """
         Convert a raw planning result into a task graph.
 
         This method:
-        1. Processes the raw plan JSON
-        2. Creates nodes for each task
-        3. Establishes dependencies between nodes
-        4. Builds the inner graph structure
+        1. Emits plan_received event
+        2. Processes the raw plan JSON
+        3. Creates nodes for each task, passing context
+        4. Establishes dependencies between nodes
+        5. Builds the inner graph structure (emitting node_added/edge_added events via Graph methods)
+        6. Emits inner_graph_built event
 
         Args:
             raw_plan (list): List of task dictionaries from the planner
+            ctx (ExecutionContext, optional): Execution context
         """
+        # --- Emit Event: plan_received ---
+        emit_plan_received(
+            node_id=self.hashkey,
+            raw_plan=raw_plan,
+            ctx=ctx,
+        )
+
         if (
             len(raw_plan) == 0
         ):  # Atomic task, still create an execution graph, but the execution graph has only one execute node, iterating through required_task_info_keys and retrieving them.
@@ -709,6 +755,7 @@ class AbstractNode(ABC):
                     if not task.get("atom")
                     else NodeType.EXECUTE_NODE
                 ),
+                ctx=ctx,
             )
             nodes.append(node)
             id2node[task["id"]] = node
@@ -752,12 +799,25 @@ class AbstractNode(ABC):
         self.inner_graph.clear()
         # Add nodes
         for node in nodes:
-            self.inner_graph.add_node(node)
+            self.inner_graph.add_node(node, ctx=ctx)
         # Add edges
         for node in nodes:
             for parent_node in node.node_graph_info["parent_nodes"]:
-                self.inner_graph.add_edge(parent_node, node)
+                self.inner_graph.add_edge(parent_node, node, ctx=ctx)
         self.inner_graph.topological_sort()
+
+        # --- Emit Event: inner_graph_built ---
+        edge_count = sum(
+            len(children) for children in self.inner_graph.graph_edges.values()
+        )
+        emit_inner_graph_built(
+            node_id=self.hashkey,
+            node_count=len(self.inner_graph.node_list),
+            edge_count=edge_count,
+            node_ids=[n.hashkey for n in self.inner_graph.node_list],
+            ctx=ctx,
+        )
+
         return
 
     def do_action(
@@ -818,4 +878,33 @@ class AbstractNode(ABC):
                         ),
                     )
                 )
+
+        # --- Emit Event: node_result_available ---
+        # Check if the action is one that produces a final-ish result
+        # (e.g., 'execute', 'final_aggregate')
+        # We might need a more robust way to identify final result actions
+        if action_name in ("execute", "final_aggregate", "plan") and result:
+            # Create a summary; handling different result types might be needed
+            if isinstance(result, (str, bytes)):
+                summary = str(result)[:500]
+            elif isinstance(result, dict):
+                try:
+                    summary = json.dumps(result)[:500]
+                except TypeError:
+                    summary = str(result)[:500]
+            elif isinstance(result, list):
+                try:
+                    summary = json.dumps(result)[:500]
+                except TypeError:
+                    summary = str(result)[:500]
+            else:
+                summary = str(result)[:500]
+
+            emit_node_result_available(
+                node_id=self.hashkey,
+                action_name=action_name,
+                result_summary=summary,
+                ctx=ctx,
+            )
+
         return result

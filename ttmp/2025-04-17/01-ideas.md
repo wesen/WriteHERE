@@ -9,12 +9,17 @@
 ## New Events
 
 - [ ] add a program start event
-- [ ] events for node creation
+- [x] events for node creation
+- [ ] add node type / status to execution context
+- [ ] add current graph to graph modification events
+- [ ] link plan received and other downstream from an llm call events with the llm event info
 
 ## UI improvements
 
 - [x] Render the prompt preview in a nicer fashion
 - [ ] Render as markdown
+- [ ] Add filters to only show certain types of events (for example, hide node added / edge added)
+- [ ] render graphs of the graph being built
 
 - [x] modal with info
 - [ ] show related steps
@@ -25,6 +30,8 @@
 - [ ] reducing the graph on the frontend and the backend
 
 - [ ] running times for tasks
+
+- [ ] in events that are linked to a node, always show node type / node status at the time of the event
 
 ## Future Features
 

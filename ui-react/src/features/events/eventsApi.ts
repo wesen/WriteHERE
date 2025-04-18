@@ -75,6 +75,58 @@ export interface ToolReturnedPayload {
   node_id?: string | null; // Optional
 }
 
+// New Node/Graph Event Payloads
+
+export interface NodeCreatedPayload {
+  node_id: string;
+  node_nid: string;
+  node_type: string;
+  task_type: string;
+  task_goal: string;
+  layer: number;
+  outer_node_id?: string | null;
+  root_node_id: string;
+  initial_parent_nids: string[];
+  step?: number | null;
+}
+
+export interface PlanReceivedPayload {
+  node_id: string;
+  raw_plan: any[]; // Using any[] since plan structure can vary
+  step?: number | null;
+}
+
+export interface NodeAddedPayload {
+  graph_owner_node_id: string;
+  added_node_id: string;
+  added_node_nid: string;
+  step?: number | null;
+}
+
+export interface EdgeAddedPayload {
+  graph_owner_node_id: string;
+  parent_node_id: string;
+  child_node_id: string;
+  parent_node_nid: string;
+  child_node_nid: string;
+  step?: number | null;
+}
+
+export interface InnerGraphBuiltPayload {
+  node_id: string;
+  node_count: number;
+  edge_count: number;
+  node_ids: string[];
+  step?: number | null;
+}
+
+export interface NodeResultAvailablePayload {
+  node_id: string;
+  action_name: string;
+  result_summary: string;
+  step?: number | null;
+}
+
 // Define a union of known event type strings
 export type KnownEventType =
   | "step_started"
@@ -83,7 +135,13 @@ export type KnownEventType =
   | "llm_call_started"
   | "llm_call_completed"
   | "tool_invoked"
-  | "tool_returned";
+  | "tool_returned"
+  | "node_created"
+  | "plan_received"
+  | "node_added"
+  | "edge_added"
+  | "inner_graph_built"
+  | "node_result_available";
 
 // Discriminated Union for all possible events
 export type AgentEvent =
@@ -136,7 +194,48 @@ export type AgentEvent =
       run_id?: string | null;
       payload: ToolReturnedPayload;
     }
-  // Add other event types here if they exist (e.g., search_completed)
+  | {
+      event_id: string;
+      timestamp: string;
+      event_type: "node_created";
+      run_id?: string | null;
+      payload: NodeCreatedPayload;
+    }
+  | {
+      event_id: string;
+      timestamp: string;
+      event_type: "plan_received";
+      run_id?: string | null;
+      payload: PlanReceivedPayload;
+    }
+  | {
+      event_id: string;
+      timestamp: string;
+      event_type: "node_added";
+      run_id?: string | null;
+      payload: NodeAddedPayload;
+    }
+  | {
+      event_id: string;
+      timestamp: string;
+      event_type: "edge_added";
+      run_id?: string | null;
+      payload: EdgeAddedPayload;
+    }
+  | {
+      event_id: string;
+      timestamp: string;
+      event_type: "inner_graph_built";
+      run_id?: string | null;
+      payload: InnerGraphBuiltPayload;
+    }
+  | {
+      event_id: string;
+      timestamp: string;
+      event_type: "node_result_available";
+      run_id?: string | null;
+      payload: NodeResultAvailablePayload;
+    }
   // Fallback for unknown event types, ensuring it doesn't overlap with known types
   | {
       event_id: string;

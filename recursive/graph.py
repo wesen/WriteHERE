@@ -1,20 +1,26 @@
 # coding: utf8
 from collections import defaultdict
+from typing import TYPE_CHECKING, Optional
 
+from recursive.utils.event_bus import emit_node_added, emit_edge_added
+from recursive.common.context import ExecutionContext
 from recursive.utils.registry import Register
+
+if TYPE_CHECKING:
+    from recursive.node.abstract import AbstractNode
 
 task_register = Register("task_register")
 
 
 class Graph:
-    def __init__(self, outer_node):
+    def __init__(self, outer_node: "AbstractNode"):
         # Create a dict to store relationships between points in the graph {v: [u, i]} (v,u,i are all points, representing edges <v, u>, <v, i>): edge collection
         # parent.nid -> child1, child2
-        self.graph_edges = {}
-        self.nid_list = []
-        self.node_list = []
-        self.topological_task_queue = []
-        self.outer_node = outer_node
+        self.graph_edges: dict[str, list["AbstractNode"]] = {}
+        self.nid_list: list[str] = []
+        self.node_list: list["AbstractNode"] = []
+        self.topological_task_queue: list["AbstractNode"] = []
+        self.outer_node: "AbstractNode" = outer_node
 
     def clear(self):
         self.graph_edges = {}
@@ -22,17 +28,44 @@ class Graph:
         self.node_list = []
         self.topological_task_queue = []
 
-    def add_edge(self, parent, cur):
+    def add_edge(
+        self,
+        parent: "AbstractNode",
+        cur: "AbstractNode",
+        ctx: Optional[ExecutionContext] = None,
+    ):
         # Add edge <parent, cur>
         assert parent.nid in self.graph_edges
         self.graph_edges[parent.nid].append(cur)
 
-    def add_node(self, node):
+        # --- Emit Event ---
+        if self.outer_node and self.outer_node.hashkey:
+            emit_edge_added(
+                graph_owner_node_id=self.outer_node.hashkey,
+                parent_node_id=parent.hashkey,
+                child_node_id=cur.hashkey,
+                parent_node_nid=str(parent.nid),
+                child_node_nid=str(cur.nid),
+                ctx=ctx,
+            )
+
+    def add_node(self, node: "AbstractNode", ctx: Optional[ExecutionContext] = None):
         if node.nid in self.nid_list:
             raise Exception("Duplicate Node")
         self.nid_list.append(node.nid)
         self.node_list.append(node)
         self.graph_edges[node.nid] = []
+
+        # --- Emit Event ---
+        # Ensure outer_node exists and has a hashkey
+        owner_id = self.outer_node.hashkey if self.outer_node else None
+        if owner_id:
+            emit_node_added(
+                graph_owner_node_id=owner_id,
+                added_node_id=node.hashkey,
+                added_node_nid=str(node.nid),
+                ctx=ctx,
+            )
 
     def topological_sort(self, mode="bfs"):
         # mode is bfs or dfs
