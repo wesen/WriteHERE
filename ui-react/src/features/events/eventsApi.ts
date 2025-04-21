@@ -27,6 +27,7 @@ export interface NodeStatusChangePayload {
   node_goal: string; // Note: Not strictly needed for rendering but present in python
   old_status: string;
   new_status: string;
+  step?: number | null;
 }
 
 export interface LlmCallStartedPayload {

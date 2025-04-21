@@ -12,6 +12,9 @@ const getEventStep = (event: AgentEvent): number | string => {
         isEventType('step_finished')(event) ||
         isEventType('node_created')(event) ||
         isEventType('plan_received')(event) ||
+        isEventType('llm_call_started')(event) ||
+        isEventType("llm_call_completed")(event) ||
+        isEventType('node_status_changed')(event) ||
         isEventType('node_added')(event) ||
         isEventType('edge_added')(event) ||
         isEventType('inner_graph_built')(event) ||
@@ -40,7 +43,7 @@ const getEventNodeId = (event: AgentEvent): string => {
     }
     
     if (isEventType("edge_added")(event)) {
-        return `${event.payload.parent_node_id?.substring(0, 4)}→${event.payload.child_node_id?.substring(0, 4)}` || 'N/A';
+        return `${event.payload.parent_node_id?.substring(0, 4)}→${event.payload.child_node_id?.substring(0, 4)}`;
     }
     
     if (isEventType("inner_graph_built")(event)) {

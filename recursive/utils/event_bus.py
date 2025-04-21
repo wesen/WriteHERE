@@ -85,12 +85,13 @@ class EventBus:
         self._enabled = client is not None
 
     def publish(self, event: Event):
-        if not self._enabled:
-            return  # Silently ignore if Redis is not connected
+        if not self._enabled or self._client is None:
+            return  # Silently ignore if Redis is not connected or client is None
 
         try:
             # Use Pydantic's json() method for serialization respecting json_encoders
             payload = {"json_payload": event.json()}
+            # Use non-None assertion since we've already checked above
             self._client.xadd(
                 self._stream_name,
                 payload,
@@ -161,19 +162,21 @@ def emit_step_finished(
 
 
 def emit_node_status_changed(
-    node_id: str, node_goal: str, old_status: str, new_status: str
+    node_id: str,
+    node_goal: str,
+    old_status: str,
+    new_status: str,
+    ctx: Optional[ExecutionContext] = None,
 ):
-    bus.publish(
-        _create_event(
-            EventType.NODE_STATUS_CHANGED,
-            {
-                "node_id": node_id,
-                "node_goal": node_goal,
-                "old_status": old_status,
-                "new_status": new_status,
-            },
-        )
-    )
+    payload: Dict[str, Any] = {
+        "node_id": node_id,
+        "node_goal": node_goal,
+        "old_status": old_status,
+        "new_status": new_status,
+    }
+    if ctx is not None and ctx.step is not None:
+        payload["step"] = ctx.step
+    bus.publish(_create_event(EventType.NODE_STATUS_CHANGED, payload))
 
 
 def emit_llm_call_started(
@@ -181,7 +184,7 @@ def emit_llm_call_started(
     model: str,
     prompt_messages: List[Dict[str, str]],
     prompt_preview: str,
-    step: Optional[int] = None,
+    ctx: Optional[ExecutionContext] = None,
     node_id: Optional[str] = None,
 ):
     # Consider hashing or truncating the prompt for brevity/security if needed later
@@ -191,8 +194,8 @@ def emit_llm_call_started(
         "prompt": prompt_messages,
         "prompt_preview": prompt_preview,
     }
-    if step is not None:
-        payload["step"] = step
+    if ctx is not None and ctx.step is not None:
+        payload["step"] = ctx.step
     if node_id:
         payload["node_id"] = node_id
     bus.publish(_create_event(EventType.LLM_CALL_STARTED, payload))
@@ -204,11 +207,11 @@ def emit_llm_call_completed(
     duration: float,
     response_content: str,
     error: Optional[str] = None,
-    step: Optional[int] = None,
+    ctx: Optional[ExecutionContext] = None,
     node_id: Optional[str] = None,
     token_usage: Optional[dict] = None,
 ):
-    payload = {
+    payload: Dict[str, Any] = {
         "agent_class": agent_class,
         "model": model,
         "duration_seconds": duration,
@@ -217,8 +220,8 @@ def emit_llm_call_completed(
     }
     if error:
         payload["error"] = error
-    if step is not None:
-        payload["step"] = step
+    if ctx is not None and ctx.step is not None:
+        payload["step"] = ctx.step
     if node_id:
         payload["node_id"] = node_id
     if token_usage:
@@ -231,7 +234,7 @@ def emit_llm_call_completed(
 def emit_tool_invoked(
     tool_name: str, api_name: str, args_summary: str, node_id: Optional[str] = None
 ):
-    payload = {
+    payload: Dict[str, Any] = {
         "tool_name": tool_name,
         "api_name": api_name,
         "args_summary": args_summary[:500] + "...",
@@ -250,7 +253,7 @@ def emit_tool_returned(
     error: Optional[str] = None,
     node_id: Optional[str] = None,
 ):
-    payload = {
+    payload: Dict[str, Any] = {
         "tool_name": tool_name,
         "api_name": api_name,
         "state": state,
@@ -279,7 +282,7 @@ def emit_node_created(
     initial_parent_nids: List[str],
     ctx: Optional[ExecutionContext] = None,
 ):
-    payload = {
+    payload: Dict[str, Any] = {
         "node_id": node_id,
         "node_nid": node_nid,
         "node_type": node_type,
@@ -301,7 +304,7 @@ def emit_plan_received(
     raw_plan: List[Dict],
     ctx: Optional[ExecutionContext] = None,
 ):
-    payload = {
+    payload: Dict[str, Any] = {
         "node_id": node_id,
         "raw_plan": raw_plan,
     }
@@ -316,7 +319,7 @@ def emit_node_added(
     added_node_nid: str,
     ctx: Optional[ExecutionContext] = None,
 ):
-    payload = {
+    payload: Dict[str, Any] = {
         "graph_owner_node_id": graph_owner_node_id,
         "added_node_id": added_node_id,
         "added_node_nid": added_node_nid,
@@ -334,7 +337,7 @@ def emit_edge_added(
     child_node_nid: str,
     ctx: Optional[ExecutionContext] = None,
 ):
-    payload = {
+    payload: Dict[str, Any] = {
         "graph_owner_node_id": graph_owner_node_id,
         "parent_node_id": parent_node_id,
         "child_node_id": child_node_id,
@@ -353,7 +356,7 @@ def emit_inner_graph_built(
     node_ids: List[str],
     ctx: Optional[ExecutionContext] = None,
 ):
-    payload = {
+    payload: Dict[str, Any] = {
         "node_id": node_id,
         "node_count": node_count,
         "edge_count": edge_count,
@@ -370,7 +373,7 @@ def emit_node_result_available(
     result_summary: str,
     ctx: Optional[ExecutionContext] = None,
 ):
-    payload = {
+    payload: Dict[str, Any] = {
         "node_id": node_id,
         "action_name": action_name,
         "result_summary": result_summary[:500] + "...",

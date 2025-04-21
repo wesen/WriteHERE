@@ -125,7 +125,9 @@ class GraphRunEngine:
         self.memory = self.memory.load(folder)
 
     @log_typing
-    def forward_exam(self, node: AbstractNode, verbose: bool) -> None:
+    def forward_exam(
+        self, node: AbstractNode, verbose: bool, ctx: Optional[ExecutionContext] = None
+    ) -> None:
         """
         Recursively examine and update the status of a node and its descendants.
 
@@ -136,6 +138,7 @@ class GraphRunEngine:
         Args:
             node (AbstractNode): The node to start the examination from.
             verbose (bool): Whether to log status changes during examination.
+            ctx (ExecutionContext, optional): Execution context, primarily for step tracking.
         """
         # The exam order is bottom-up hierarchically, and top-down based on dependencies.
         # not_ready -> ready: Need to check the execution status of dependent nodes, and whether upper-level nodes have entered the doing state
@@ -143,8 +146,8 @@ class GraphRunEngine:
         # plan_reflection_done -> doing:
         if node.is_suspend:
             for inner_node in node.topological_task_queue:
-                self.forward_exam(inner_node, verbose)
-            node.do_exam(verbose)
+                self.forward_exam(inner_node, verbose, ctx)
+            node.do_exam(verbose, ctx)
 
     @log_typing
     def forward_one_step_not_parallel(
@@ -260,7 +263,7 @@ class GraphRunEngine:
         )
 
         # After the action ends, update the entire graph status. When in parallel, should wait for all parallel tasks to complete before executing uniformly
-        self.forward_exam(self.root_node, verbose)
+        self.forward_exam(self.root_node, verbose, ctx)
 
         # --- Emit StepFinished ---
         step_duration = time.monotonic() - step_start_time

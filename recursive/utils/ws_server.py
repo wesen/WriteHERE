@@ -5,6 +5,7 @@ import threading
 from typing import Set
 from pathlib import Path  # Added for path manipulation
 
+import redis
 import redis.asyncio as aredis
 import uvicorn
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
@@ -39,6 +40,7 @@ async def redis_listener(redis_client: aredis.Redis):
             response = await redis_client.xread({EVENT_STREAM_NAME: last_id}, block=0)
             if response:
                 for stream, messages in response:
+                    print(f"Received messages: {messages}")
                     for message_id, fields in messages:
                         last_id = message_id
                         # Assuming the event JSON is stored under 'json_payload' key
@@ -106,6 +108,7 @@ if assets_dir.exists() and assets_dir.is_dir():
 @app.get("/api/events")
 async def get_events():
     """Dummy endpoint for initial event fetch."""
+    print("get_events")
     return {"events": [], "status": "connected"}
 
 

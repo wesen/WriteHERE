@@ -171,7 +171,7 @@ class UpdateAtomPlanningAgent(Agent):
             # Atomicity Check Loop
             while not succ and retry_cnt < MAX_RETRIES:
                 atom_llm_result = get_llm_output(
-                    node, self, memory, "atom", retry_cnt > 0, *args, **kwargs
+                    node, self, memory, "atom", retry_cnt > 0, ctx=ctx, *args, **kwargs
                 )
                 # Determine if the LLM response indicates a clear decision
                 # TODO: Make ("atomic", "complex") configurable? Seems hardcoded relation to atom_result_flag.
@@ -241,7 +241,14 @@ class UpdateAtomPlanningAgent(Agent):
                 # Planning Loop
                 while not succ and retry_cnt < MAX_RETRIES:
                     plan_llm_result = get_llm_output(
-                        node, self, memory, "planning", retry_cnt > 0, *args, **kwargs
+                        node=node,
+                        agent=self,
+                        memory=memory,
+                        agent_type="planning",
+                        overwrite_cache=retry_cnt > 0,
+                        ctx=ctx,
+                        *args,
+                        **kwargs,
                     )
                     try:
                         # Attempt to parse the direct "plan_result" field

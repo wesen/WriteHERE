@@ -26,7 +26,7 @@ class Agent(ABC):
         os.makedirs("debug/logs/llm", exist_ok=True)
 
     @abstractmethod
-    def forward(self, node: AbstractNode, memory: Memory, *args: Any, **kwargs: Any):
+    def forward(self, node: AbstractNode, memory: Memory, *args: Any, **kwargs: Any) -> Any:
         raise NotImplementedError()
 
     @abstractmethod
@@ -54,10 +54,10 @@ class Agent(ABC):
         if history_message is not None:
             message.append(history_message)
         message.append({"role": "user", "content": prompt})
-        logger.info(message[-1]["content"])
+        logger.debug(message[-1]["content"])
 
         model = other_inner_args.pop("model", "gpt-4o")
-        step = ctx.step if ctx else None  # Get step from context
+        # step = ctx.step if ctx else None  # Get step from context - No longer needed here
 
         llm_call_start_time = time.monotonic()
         node_id = node.hashkey if node else None
@@ -83,7 +83,8 @@ class Agent(ABC):
             model=model,
             prompt_messages=message,  # Pass full message list
             prompt_preview=prompt[:200] + "...",
-            step=step,  # Pass step from context
+            # step=step,  # Pass step from context - Replaced by ctx
+            ctx=ctx,  # Pass the whole context object
             node_id=node_id,
         )
 
@@ -133,7 +134,8 @@ class Agent(ABC):
             duration=llm_call_duration,
             response_content=content,  # Pass full content
             error=error_msg,
-            step=step,  # Pass step from context
+            # step=step,  # Pass step from context - Replaced by ctx
+            ctx=ctx,  # Pass the whole context object
             node_id=node_id,
             token_usage=token_usage,
         )

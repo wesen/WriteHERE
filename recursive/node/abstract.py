@@ -3,7 +3,7 @@ import uuid
 from abc import ABC, abstractmethod
 from copy import deepcopy
 from datetime import datetime
-from typing import Any, Optional, List, Dict
+from typing import Any, Optional, List, Dict, Tuple
 
 from loguru import logger
 
@@ -96,15 +96,19 @@ class AbstractNode(ABC):
         self.agent_proxy = AgentProxy(config)
 
         # Result
-        self.result = {}
+        self.result: Dict[str, Any] = {}
 
         # -------- States -------
-        self.status_list = {"silence": [], "suspend": [], "activate": []}
+        self.status_list: Dict[str, List[TaskStatus]] = {
+            "silence": [],
+            "suspend": [],
+            "activate": [],
+        }
 
         # Status-Condtion-Action-NextStatus mapping
-        self.status_action_mapping = {}
+        self.status_action_mapping: Dict[Any, Any] = {}
         # Status-Condtion-NextStatus mapping
-        self.status_exam_mapping = {}
+        self.status_exam_mapping: Dict[Any, Any] = {}
 
         self.define_status()
         self.check_status_valid()
@@ -497,7 +501,7 @@ class AbstractNode(ABC):
 
         return action_name, result
 
-    def do_exam(self, verbose):
+    def do_exam(self, verbose, ctx: Optional[ExecutionContext] = None):
         """
         Examine the node's status and update it based on defined conditions, emitting an event on change.
 
@@ -508,6 +512,7 @@ class AbstractNode(ABC):
 
         Args:
             verbose (bool): Whether to log status changes
+            ctx (ExecutionContext, optional): Execution context, primarily for step tracking
 
         Raises:
             NotImplementedError: If the node is not in a suspend state
@@ -528,6 +533,7 @@ class AbstractNode(ABC):
                         node_goal=self.task_info.get("goal", "?"),
                         old_status=old_status.name,
                         new_status=next_status.name,
+                        ctx=ctx,
                     )
                 if verbose:
                     logger.info(
@@ -777,7 +783,7 @@ class AbstractNode(ABC):
                 )
 
         # Process implicit dependencies (sequential order) between COMPOSITION tasks
-        prev_action_node = []
+        prev_action_node: List[AbstractNode] = []
         for node in sorted(nodes, key=lambda x: int(str(x.nid).split(".")[-1])):
             if node.task_type_tag == "COMPOSITION":
                 for prev in prev_action_node:
