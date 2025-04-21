@@ -1,4 +1,9 @@
 import { createApi, fetchBaseQuery } from "@reduxjs/toolkit/query/react";
+import {
+  nodeAdded as graphNodeAdded,
+  nodeUpdated as graphNodeUpdated,
+  edgeAdded as graphEdgeAdded,
+} from "../graph/graphSlice"; // Import graph actions
 
 // Define the structure for a single message in the prompt
 export interface LlmMessage {
@@ -279,7 +284,10 @@ export const eventsApi = createApi({
           console.error("[eventsApi] HTTP fetch error:", err);
         }
       },
-      async onCacheEntryAdded(_, { updateCachedData, cacheEntryRemoved }) {
+      async onCacheEntryAdded(
+        _,
+        { updateCachedData, cacheEntryRemoved, dispatch }
+      ) {
         // Set initial status
         updateCachedData((draft) => {
           draft.status = ConnectionStatus.Connecting;
@@ -291,7 +299,7 @@ export const eventsApi = createApi({
         console.log("[eventsApi] Attempting WebSocket connection...");
         const wsProtocol =
           window.location.protocol === "https:" ? "wss:" : "ws:";
-        const wsUrl = `${wsProtocol}//${window.location.hostname}:${window.location.port}/ws/events`;
+        const wsUrl = `${wsProtocol}//${window.location.host}/ws/events`; // Use host instead of hostname and port
         const ws = new WebSocket(wsUrl);
 
         ws.onopen = () => {
@@ -302,21 +310,80 @@ export const eventsApi = createApi({
         };
 
         ws.onmessage = (event) => {
+          let msg: AgentEvent; // Declare msg here
           try {
-            const message: AgentEvent = JSON.parse(event.data);
-            console.log("[eventsApi] Received event:", message);
+            msg = JSON.parse(event.data); // Assign here
+            console.log("[eventsApi] Received event:", msg);
+
+            /* 1️⃣  keep the audit log */
             updateCachedData((draft) => {
               // Prepend the new event to maintain chronological order (newest first)
-              draft.events.unshift(message);
+              draft.events.unshift(msg);
               // Optional: Limit the number of stored events
               const maxEvents = 200;
               if (draft.events.length > maxEvents) {
                 draft.events.length = maxEvents; // Keep only the latest N events
               }
             });
+
+            /* 2️⃣  mirror graph‑relevant events */
+            switch (msg.event_type) {
+              case "node_created": {
+                // Ensure payload is correctly typed
+                const p = msg.payload as NodeCreatedPayload;
+                console.log(
+                  `[Graph] Dispatching nodeAdded: ${p.node_id} (${p.node_nid})`
+                );
+                dispatch(
+                  graphNodeAdded({
+                    id: p.node_id,
+                    nid: p.node_nid,
+                    type: p.node_type,
+                    goal: p.task_goal,
+                    layer: p.layer,
+                    taskType: p.task_type,
+                  })
+                );
+                break;
+              }
+              case "node_added": {
+                // "node_added" only tells you that a *graph* gained a node.
+                // If you actually know the node details from elsewhere you can
+                // upsert here; otherwise ignore or dispatch a minimal add.
+                // Example: dispatch(graphNodeAdded({ id: (msg.payload as NodeAddedPayload).added_node_id, ... other known defaults ... }))
+                break;
+              }
+              case "edge_added": {
+                const p = msg.payload as EdgeAddedPayload;
+                const edgeId = `${p.parent_node_id}-${p.child_node_id}`;
+                console.log(`[Graph] Dispatching edgeAdded: ${edgeId}`);
+                dispatch(
+                  graphEdgeAdded({
+                    id: edgeId, // Use pre-calculated ID
+                    parent: p.parent_node_id,
+                    child: p.child_node_id,
+                  })
+                );
+                break;
+              }
+              case "node_status_changed": {
+                const p = msg.payload as NodeStatusChangePayload;
+                console.log(
+                  `[Graph] Dispatching nodeUpdated: ${p.node_id}, Status: ${p.new_status}`
+                );
+                dispatch(
+                  graphNodeUpdated({
+                    id: p.node_id,
+                    changes: { status: p.new_status },
+                  })
+                );
+                break;
+              }
+              // Handle other event types if they should affect the graph
+            }
           } catch (e) {
             console.error(
-              "[eventsApi] Failed to parse incoming message:",
+              "[eventsApi] Failed to parse incoming message or dispatch graph action:",
               event.data,
               e
             );
@@ -326,10 +393,15 @@ export const eventsApi = createApi({
         ws.onerror = (error) => {
           console.error("[eventsApi] WebSocket error:", error);
           // Status might be updated in onclose, or you can update here
+          updateCachedData((draft) => {
+            draft.status = ConnectionStatus.Disconnected;
+          });
         };
 
-        ws.onclose = () => {
-          console.log("[eventsApi] WebSocket connection closed");
+        ws.onclose = (event) => {
+          console.log(
+            `[eventsApi] WebSocket connection closed (Code: ${event.code}, Reason: ${event.reason})`
+          );
           updateCachedData((draft) => {
             draft.status = ConnectionStatus.Disconnected;
           });
