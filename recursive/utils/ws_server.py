@@ -2,7 +2,7 @@ import asyncio
 import json
 import os
 import threading
-from typing import Set
+from typing import Set, Optional
 from pathlib import Path  # Added for path manipulation
 
 import redis
@@ -18,6 +18,9 @@ from fastapi.staticfiles import StaticFiles
 
 # Import the new GraphStateManager
 from recursive.utils.graph_state_manager import GraphStateManager
+
+# Import the new EventStateManager
+from recursive.utils.event_state_manager import EventStateManager
 
 # --- Configuration ---
 # Reuse stream name from event_bus or define separately
@@ -39,6 +42,9 @@ active_connections: Set[WebSocket] = set()
 # Initialize the global graph state manager
 graph_manager = GraphStateManager()
 
+# Initialize the global event state manager
+event_manager = EventStateManager()
+
 
 async def redis_listener(redis_client: aredis.Redis):
     """Listens to Redis stream and broadcasts messages to connected websockets."""
@@ -57,12 +63,31 @@ async def redis_listener(redis_client: aredis.Redis):
                         if "json_payload" in fields:
                             message_data = fields["json_payload"]
 
-                            # Process the event for graph state management
+                            # Process the event for state management
                             try:
                                 event = json.loads(message_data)
+                                print(f"Processing event: {event.get('event_type')}")
+
+                                # Handle run_started event specially
+                                if event.get("event_type") == "run_started":
+                                    print(f"Clearing events: {event.get('event_type')}")
+                                    await event_manager.clear_events()
+
+                                # Add event to manager
+                                print(
+                                    f"Adding event to manager: {event.get('event_type')}"
+                                )
+                                await event_manager.add_event(event)
+
+                                # Process for graph state
+                                print(
+                                    f"Processing event for graph state: {event.get('event_type')}"
+                                )
                                 await graph_manager.process_event(event)
                             except Exception as e:
-                                print(f"Error processing event for graph state: {e}")
+                                print(
+                                    f"Error processing event for state management: {e}"
+                                )
 
                             # Broadcast to all connected clients
                             # Create a list copy to avoid issues if set changes during iteration
@@ -132,10 +157,9 @@ if assets_dir.exists() and assets_dir.is_dir():
 
 
 @app.get("/api/events")
-async def get_events():
-    """Dummy endpoint for initial event fetch."""
-    print("get_events")
-    return {"events": [], "status": "connected"}
+async def get_events(limit: Optional[int] = None):
+    """Return historical events with optional limit."""
+    return event_manager.get_state()
 
 
 @app.get("/api/graph")

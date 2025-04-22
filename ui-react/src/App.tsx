@@ -7,7 +7,7 @@ import Tab from 'react-bootstrap/Tab';
 import { GraphCanvas } from './components/GraphCanvas';
 import { useDispatch } from 'react-redux';
 import { initializeGraphState } from './features/graph/graphSlice';
-import { AppDispatch } from './app/store';
+import { AppDispatch } from './store';
 
 export default function App() {
   const dispatch = useDispatch<AppDispatch>();

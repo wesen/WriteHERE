@@ -288,10 +288,68 @@ export const eventsApi = createApi({
       void
     >({
       query: () => "/api/events", // Specify the full path here
-      async onQueryStarted(_, { queryFulfilled }) {
+      async onQueryStarted(_, { queryFulfilled, dispatch }) {
         try {
           const result = await queryFulfilled;
           console.log("[eventsApi] HTTP fetch result:", result);
+
+          return;
+
+          // If we have initial events, process them for the graph state
+          if (result.data.events) {
+            result.data.events.forEach((event) => {
+              // Process each event for graph state
+              switch (event.event_type) {
+                case "run_started": {
+                  dispatch(graphClearGraph());
+                  break;
+                }
+                case "node_created": {
+                  const p = event.payload as NodeCreatedPayload;
+                  console.log(
+                    `[Graph] Dispatching nodeAdded: ${p.node_id} (${p.node_nid})`
+                  );
+                  dispatch(
+                    graphNodeAdded({
+                      id: p.node_id,
+                      nid: p.node_nid,
+                      type: p.node_type,
+                      goal: p.task_goal,
+                      layer: p.layer,
+                      taskType: p.task_type,
+                    })
+                  );
+                  break;
+                }
+                case "edge_added": {
+                  const p = event.payload as EdgeAddedPayload;
+                  const edgeId = `${p.parent_node_id}-${p.child_node_id}`;
+                  console.log(`[Graph] Dispatching edgeAdded: ${edgeId}`);
+                  dispatch(
+                    graphEdgeAdded({
+                      id: edgeId,
+                      parent: p.parent_node_id,
+                      child: p.child_node_id,
+                    })
+                  );
+                  break;
+                }
+                case "node_status_changed": {
+                  const p = event.payload as NodeStatusChangePayload;
+                  console.log(
+                    `[Graph] Dispatching nodeUpdated: ${p.node_id}, Status: ${p.new_status}`
+                  );
+                  dispatch(
+                    graphNodeUpdated({
+                      id: p.node_id,
+                      changes: { status: p.new_status },
+                    })
+                  );
+                  break;
+                }
+              }
+            });
+          }
         } catch (err) {
           console.error("[eventsApi] HTTP fetch error:", err);
         }
@@ -322,9 +380,9 @@ export const eventsApi = createApi({
         };
 
         ws.onmessage = (event) => {
-          let msg: AgentEvent; // Declare msg here
+          let msg: AgentEvent;
           try {
-            msg = JSON.parse(event.data); // Assign here
+            msg = JSON.parse(event.data);
             console.log("[eventsApi] Received event:", msg);
 
             /* 1️⃣  keep the audit log */
