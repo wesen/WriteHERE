@@ -101,6 +101,8 @@ export interface PlanReceivedPayload {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   raw_plan: any[]; // Using any[] since plan structure can vary
   step?: number | null;
+  task_type?: string | null;
+  task_goal?: string | null;
 }
 
 export interface NodeAddedPayload {
@@ -108,6 +110,8 @@ export interface NodeAddedPayload {
   added_node_id: string;
   added_node_nid: string;
   step?: number | null;
+  task_type?: string | null;
+  task_goal?: string | null;
 }
 
 export interface EdgeAddedPayload {
@@ -117,6 +121,8 @@ export interface EdgeAddedPayload {
   parent_node_nid: string;
   child_node_nid: string;
   step?: number | null;
+  task_type?: string | null;
+  task_goal?: string | null;
 }
 
 export interface InnerGraphBuiltPayload {
@@ -125,6 +131,8 @@ export interface InnerGraphBuiltPayload {
   edge_count: number;
   node_ids: string[];
   step?: number | null;
+  task_type?: string | null;
+  task_goal?: string | null;
 }
 
 export interface NodeResultAvailablePayload {
@@ -132,6 +140,8 @@ export interface NodeResultAvailablePayload {
   action_name: string;
   result_summary: string;
   step?: number | null;
+  task_type?: string | null;
+  task_goal?: string | null;
 }
 
 // Define a union of known event type strings
@@ -277,7 +287,7 @@ export const eventsApi = createApi({
       void
     >({
       query: () => "/api/events", // Specify the full path here
-      async onQueryStarted(arg, { queryFulfilled }) {
+      async onQueryStarted(_, { queryFulfilled }) {
         try {
           const result = await queryFulfilled;
           console.log("[eventsApi] HTTP fetch result:", result);

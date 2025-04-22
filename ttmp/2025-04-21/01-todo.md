@@ -8,6 +8,7 @@
 
 - [x] pass execution context to emit_llm_call_started/completed
 - [ ] Batch node creation and edge creation
+- [ ] Extract some common payload types for the eventsApi.ts
 
 ## Ideas for events
 
@@ -18,7 +19,7 @@
 
 ## UI stuff
 
-- [ ] Show more of the metadata fields now that context has been extended
+- [x] Show more of the metadata fields now that context has been extended
 - [ ] Clicking on a node shows all the events associated with that node
 - [ ] Potentially also more state information about the results
 

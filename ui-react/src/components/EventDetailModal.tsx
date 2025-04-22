@@ -3,6 +3,7 @@ import { Modal, Tab, Nav, Button, Badge } from 'react-bootstrap';
 import { AgentEvent, LlmMessage } from '../features/events/eventsApi';
 import { isEventType } from '../helpers/eventType';
 import { ArrowRight } from 'lucide-react';
+import CodeHighlighter from './SyntaxHighlighter';
 
 // Event type to badge variant mapping
 const eventTypeBadgeVariant: Record<string, string> = {
@@ -88,14 +89,22 @@ const EventDetailModal: React.FC<EventDetailModalProps> = ({ show, onHide, event
               </Badge>
             </div>
             <div className="message-content">
-              <pre style={{ maxHeight: '300px', overflowY: 'auto', whiteSpace: 'pre-wrap', margin: 0 }}>
-                {message.content}
-              </pre>
+              <CodeHighlighter
+                code={message.content}
+                language="markdown"
+                maxHeight="300px"
+                showLineNumbers={false}
+              />
             </div>
           </div>
         ))}
       </div>
     );
+  };
+
+  // Add this helper function near the top of the file, below the existing utility functions
+  const hasNodeId = (payload: any): boolean => {
+    return Boolean(payload && 'node_id' in payload);
   };
 
   // Render the summary tab content based on event type
@@ -205,9 +214,11 @@ const EventDetailModal: React.FC<EventDetailModalProps> = ({ show, onHide, event
               <strong>Prompt Preview</strong>
             </div>
             <div className="card-body">
-              <pre style={{ maxHeight: '250px', overflowY: 'auto', whiteSpace: 'pre-wrap' }}>
-                {formatPreview(event.payload.prompt_preview)}
-              </pre>
+              <CodeHighlighter
+                code={formatPreview(event.payload.prompt_preview)}
+                language="markdown"
+                maxHeight="250px"
+              />
               {event.payload.prompt && (
                 <div className="text-end mt-2">
                   <Button size="sm" variant="outline-primary" onClick={() => setActiveTab('prompt')}>
@@ -257,9 +268,11 @@ const EventDetailModal: React.FC<EventDetailModalProps> = ({ show, onHide, event
               <strong>Response Preview</strong>
             </div>
             <div className="card-body">
-              <pre style={{ maxHeight: '250px', overflowY: 'auto', whiteSpace: 'pre-wrap' }}>
-                {formatPreview(event.payload.response)}
-              </pre>
+              <CodeHighlighter
+                code={formatPreview(event.payload.response)}
+                language="markdown"
+                maxHeight="250px"
+              />
               <div className="text-end mt-2">
                 <Button size="sm" variant="outline-primary" onClick={() => setActiveTab('response')}>
                   View Full Response
@@ -289,7 +302,11 @@ const EventDetailModal: React.FC<EventDetailModalProps> = ({ show, onHide, event
             </div>
             <div className="mt-3">
               <strong>Arguments:</strong>
-              <pre style={{ maxHeight: '200px', overflowY: 'auto' }}>{event.payload.args_summary}</pre>
+              <CodeHighlighter
+                code={event.payload.args_summary}
+                language="json"
+                maxHeight="200px"
+              />
             </div>
           </div>
         </div>
@@ -330,7 +347,218 @@ const EventDetailModal: React.FC<EventDetailModalProps> = ({ show, onHide, event
               <strong>Result</strong>
             </div>
             <div className="card-body">
-              <pre style={{ maxHeight: '200px', overflowY: 'auto' }}>{event.payload.result_summary}</pre>
+              <CodeHighlighter
+                code={event.payload.result_summary}
+                language="json"
+                maxHeight="200px"
+              />
+            </div>
+          </div>
+        </>
+      );
+    }
+
+    if (isEventType('node_created')(event)) {
+      return (
+        <div className="card">
+          <div className="card-header bg-light py-2">
+            <strong>Node Creation Details</strong>
+          </div>
+          <div className="card-body">
+            <div className="row g-2">
+              <div className="col-md-6">
+                <p className="mb-1"><strong>Node ID:</strong> {event.payload.node_id}</p>
+                <p className="mb-1"><strong>Node NID:</strong> {event.payload.node_nid}</p>
+                <p className="mb-1"><strong>Node Type:</strong> {event.payload.node_type}</p>
+                <p className="mb-1"><strong>Task Type:</strong> {event.payload.task_type}</p>
+              </div>
+              <div className="col-md-6">
+                <p className="mb-1"><strong>Layer:</strong> {event.payload.layer}</p>
+                <p className="mb-1"><strong>Outer Node ID:</strong> {event.payload.outer_node_id || 'N/A'}</p>
+                <p className="mb-1"><strong>Root Node ID:</strong> {event.payload.root_node_id}</p>
+              </div>
+            </div>
+            <div className="mt-3">
+              <p className="mb-1"><strong>Goal:</strong> {event.payload.task_goal}</p>
+              <p className="mb-1"><strong>Initial Parent NIDs:</strong> {event.payload.initial_parent_nids?.join(', ') || 'None'}</p>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    if (isEventType('plan_received')(event)) {
+      return (
+        <>
+          <div className="card mb-3">
+            <div className="card-header bg-light py-2">
+              <strong>Plan Information</strong>
+            </div>
+            <div className="card-body">
+              <div className="row g-2">
+                <div className="col-md-6">
+                  <p className="mb-1"><strong>Node ID:</strong> {event.payload.node_id}</p>
+                  <p className="mb-1"><strong>Task Type:</strong> {event.payload.task_type || 'N/A'}</p>
+                </div>
+                <div className="col-md-6">
+                  <p className="mb-1"><strong>Plan Items:</strong> {event.payload.raw_plan?.length || 0}</p>
+                  <p className="mb-1"><strong>Task Goal:</strong> {event.payload.task_goal || 'N/A'}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="card">
+            <div className="card-header bg-light py-2">
+              <strong>Plan Structure</strong>
+            </div>
+            <div className="card-body">
+              <CodeHighlighter
+                code={JSON.stringify(event.payload.raw_plan, null, 2)}
+                language="json"
+                maxHeight="300px"
+                showLineNumbers={true}
+              />
+            </div>
+          </div>
+        </>
+      );
+    }
+
+    if (isEventType('node_added')(event)) {
+      return (
+        <div className="card">
+          <div className="card-header bg-light py-2">
+            <strong>Node Added Details</strong>
+          </div>
+          <div className="card-body">
+            <div className="row g-2">
+              <div className="col-md-6">
+                <p className="mb-1"><strong>Graph Owner Node:</strong> {event.payload.graph_owner_node_id?.substring(0, 8) || 'N/A'}</p>
+                <p className="mb-1"><strong>Task Type:</strong> {event.payload.task_type || 'N/A'}</p>
+                <p className="mb-1"><strong>Task Goal:</strong> {event.payload.task_goal || 'N/A'}</p>
+              </div>
+              <div className="col-md-6">
+                <p className="mb-1"><strong>Added Node ID:</strong> {event.payload.added_node_id?.substring(0, 8) || 'N/A'}</p>
+                <p className="mb-1"><strong>Added Node NID:</strong> {event.payload.added_node_nid}</p>
+                <p className="mb-1"><strong>Step:</strong> {event.payload.step || 'N/A'}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    if (isEventType('edge_added')(event)) {
+      return (
+        <>
+          <div className="card">
+            <div className="card-header bg-light py-2">
+              <strong>Edge Creation Details</strong>
+            </div>
+            <div className="card-body">
+              <div className="row g-2">
+                <div className="col-md-6">
+                  <p className="mb-1"><strong>Graph Owner Node:</strong> {event.payload.graph_owner_node_id?.substring(0, 8) || 'N/A'}</p>
+                  <p className="mb-1"><strong>Task Type:</strong> {event.payload.task_type || 'N/A'}</p>
+                  <p className="mb-1"><strong>Task Goal:</strong> {event.payload.task_goal || 'N/A'}</p>
+                </div>
+                <div className="col-md-6">
+                  <p className="mb-1"><strong>Step:</strong> {event.payload.step || 'N/A'}</p>
+                </div>
+              </div>
+              
+              <div className="edge-visualization mt-4 p-3 border rounded bg-light">
+                <div className="d-flex align-items-center justify-content-center">
+                  <div className="node-box border rounded p-2 bg-white">
+                    <p className="mb-0"><strong>Parent:</strong> {event.payload.parent_node_nid}</p>
+                    <p className="mb-0 small text-muted">{event.payload.parent_node_id?.substring(0, 8)}</p>
+                  </div>
+                  <ArrowRight size={30} className="mx-3 text-primary" />
+                  <div className="node-box border rounded p-2 bg-white">
+                    <p className="mb-0"><strong>Child:</strong> {event.payload.child_node_nid}</p>
+                    <p className="mb-0 small text-muted">{event.payload.child_node_id?.substring(0, 8)}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
+      );
+    }
+
+    if (isEventType('inner_graph_built')(event)) {
+      return (
+        <>
+          <div className="card mb-3">
+            <div className="card-header bg-light py-2">
+              <strong>Graph Construction Completed</strong>
+            </div>
+            <div className="card-body">
+              <div className="row g-2">
+                <div className="col-md-6">
+                  <p className="mb-1"><strong>Owner Node ID:</strong> {event.payload.node_id?.substring(0, 8) || 'N/A'}</p>
+                  <p className="mb-1"><strong>Task Type:</strong> {event.payload.task_type || 'N/A'}</p>
+                  <p className="mb-1"><strong>Task Goal:</strong> {event.payload.task_goal || 'N/A'}</p>
+                </div>
+                <div className="col-md-6">
+                  <p className="mb-1"><strong>Node Count:</strong> <Badge bg="primary">{event.payload.node_count}</Badge></p>
+                  <p className="mb-1"><strong>Edge Count:</strong> <Badge bg="info">{event.payload.edge_count}</Badge></p>
+                  <p className="mb-1"><strong>Step:</strong> {event.payload.step || 'N/A'}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="card">
+            <div className="card-header bg-light py-2">
+              <strong>Graph Node IDs</strong>
+            </div>
+            <div className="card-body">
+              <div className="node-id-list">
+                {event.payload.node_ids?.map((nodeId: string, index: number) => (
+                  <Badge key={index} bg="light" text="dark" className="me-2 mb-2 p-2">
+                    {nodeId.substring(0, 8)}
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          </div>
+        </>
+      );
+    }
+
+    if (isEventType('node_result_available')(event)) {
+      return (
+        <>
+          <div className="card mb-3">
+            <div className="card-header bg-light py-2">
+              <strong>Node Result Information</strong>
+            </div>
+            <div className="card-body">
+              <div className="row g-2">
+                <div className="col-md-6">
+                  <p className="mb-1"><strong>Node ID:</strong> {event.payload.node_id?.substring(0, 8) || 'N/A'}</p>
+                  <p className="mb-1"><strong>Action Name:</strong> {event.payload.action_name}</p>
+                </div>
+                <div className="col-md-6">
+                  <p className="mb-1"><strong>Task Type:</strong> {event.payload.task_type || 'N/A'}</p>
+                  <p className="mb-1"><strong>Task Goal:</strong> {event.payload.task_goal || 'N/A'}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="card">
+            <div className="card-header bg-light py-2">
+              <strong>Result Content</strong>
+            </div>
+            <div className="card-body">
+              <CodeHighlighter
+                code={event.payload.result_summary}
+                language="markdown"
+                maxHeight="300px"
+              />
             </div>
           </div>
         </>
@@ -344,9 +572,11 @@ const EventDetailModal: React.FC<EventDetailModalProps> = ({ show, onHide, event
           <strong>Event Details</strong>
         </div>
         <div className="card-body">
-          <pre style={{ maxHeight: '300px', overflowY: 'auto' }}>
-            {JSON.stringify(event.payload, null, 2)}
-          </pre>
+          <CodeHighlighter 
+            code={JSON.stringify(event.payload, null, 2)}
+            language="json"
+            maxHeight="300px"
+          />
         </div>
       </div>
     );
@@ -385,9 +615,11 @@ const EventDetailModal: React.FC<EventDetailModalProps> = ({ show, onHide, event
               </div>
               <div className="card-body">
                 <div className="message message-assistant p-3 rounded">
-                  <pre style={{ maxHeight: '500px', overflowY: 'auto', whiteSpace: 'pre-wrap', margin: 0 }}>
-                    {event.payload.response}
-                  </pre>
+                  <CodeHighlighter
+                    code={event.payload.response}
+                    language="markdown"
+                    maxHeight="500px"
+                  />
                 </div>
               </div>
             </div>
@@ -444,9 +676,12 @@ const EventDetailModal: React.FC<EventDetailModalProps> = ({ show, onHide, event
                   Copy JSON
                 </Button>
               </div>
-              <pre className="bg-light p-3 rounded" style={{ maxHeight: '400px', overflowY: 'auto' }}>
-                {JSON.stringify(event, null, 2)}
-              </pre>
+              <CodeHighlighter
+                code={JSON.stringify(event, null, 2)}
+                language="json"
+                maxHeight="400px"
+                showLineNumbers={true}
+              />
             </Tab.Pane>
             <Tab.Pane eventKey="metadata">
               <div className="card">
@@ -472,10 +707,10 @@ const EventDetailModal: React.FC<EventDetailModalProps> = ({ show, onHide, event
                         <th>Run ID</th>
                         <td>{event.run_id || 'N/A'}</td>
                       </tr>
-                      {event.payload.node_id && (
+                      {hasNodeId(event.payload) && (
                         <tr>
                           <th>Node ID</th>
-                          <td>{event.payload.node_id}</td>
+                          <td>{(event.payload as { node_id: string }).node_id}</td>
                         </tr>
                       )}
                       {isEventType('step_started')(event) && (

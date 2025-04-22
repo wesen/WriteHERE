@@ -40,4 +40,58 @@ pre {
 .message-function {
   background-color: #fff4e6;
   border-left: 4px solid #fd7e14;
+}
+
+/* Node visualization styles */
+.node-box {
+  min-width: 120px;
+  text-align: center;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.edge-visualization {
+  margin: 1rem 0;
+  box-shadow: inset 0 0 5px rgba(0, 0, 0, 0.05);
+}
+
+.node-id-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.node-id-list .badge {
+  font-family: monospace;
+  font-size: 0.85rem;
+}
+
+/* Code highlighting styles */
+.code-highlighter {
+  border-radius: 4px;
+  overflow: hidden;
+  position: relative;
+}
+
+.code-highlighter pre {
+  margin: 0 !important;
+}
+
+/* Button to copy code */
+.copy-button {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  opacity: 0.7;
+  transition: opacity 0.2s;
+  border: none;
+  background: rgba(255, 255, 255, 0.8);
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 12px;
+  cursor: pointer;
+  z-index: 10;
+}
+
+.copy-button:hover {
+  opacity: 1;
 } 
