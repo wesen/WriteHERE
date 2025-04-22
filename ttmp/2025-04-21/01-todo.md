@@ -1,3 +1,7 @@
+WARMUP :
+
+- [ ] Refactor the styling of events in ui-react since a lot of html / styling is duplicated (for example eventTypeBadgeVariant or eventTypeConfig)
+
 ## BUGS / issues
 
 - [ ] Some nodes don't seem to have parents
@@ -15,14 +19,14 @@
 
 - [ ] add events when nodes are computed / scheduled / created in engine.py (forward_one_step_not_parallel)
 - [x] add run started event
-- [ ] Add lllm call id to link completed to started + tool calls to parent
+- [ ] Add llm call id to link completed to started + tool calls to parent
 - [ ] pass execution context to tool_calls
 - [ ] What is Layer number?
 
 ## UI stuff
 
 - [x] Show more of the metadata fields now that context has been extended
-- [ ] Clicking on a node shows all the events associated with that node
+- [x] Clicking on a node shows all the events associated with that node
 - [ ] Potentially also more state information about the results
 
 - [ ] Make the graph scrollable + filterable
@@ -45,4 +49,4 @@
 
 ## Future
 
-- [ ] Restart nodes and tasks
+- [ ] Restart nodes and tasks in recursive (restore agent state basically)
