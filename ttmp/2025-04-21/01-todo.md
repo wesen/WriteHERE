@@ -6,6 +6,7 @@
 ## Ideas for events
 
 - add events when nodes are computed / scheduled / created in engine.py (forward_one_step_not_parallel)
+- add run started event
 
 ## BIG feature
 

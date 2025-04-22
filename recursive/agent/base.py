@@ -26,7 +26,9 @@ class Agent(ABC):
         os.makedirs("debug/logs/llm", exist_ok=True)
 
     @abstractmethod
-    def forward(self, node: AbstractNode, memory: Memory, *args: Any, **kwargs: Any) -> Any:
+    def forward(
+        self, node: AbstractNode, memory: Memory, *args: Any, **kwargs: Any
+    ) -> Any:
         raise NotImplementedError()
 
     @abstractmethod
@@ -85,7 +87,7 @@ class Agent(ABC):
             prompt_preview=prompt[:200] + "...",
             # step=step,  # Pass step from context - Replaced by ctx
             ctx=ctx,  # Pass the whole context object
-            node_id=node_id,
+            # node_id=node_id, # node_id is now passed via ctx
         )
 
         error_msg = None
@@ -136,7 +138,7 @@ class Agent(ABC):
             error=error_msg,
             # step=step,  # Pass step from context - Replaced by ctx
             ctx=ctx,  # Pass the whole context object
-            node_id=node_id,
+            # node_id=node_id, # node_id is now passed via ctx
             token_usage=token_usage,
         )
 

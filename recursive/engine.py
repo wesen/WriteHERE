@@ -7,7 +7,7 @@ from recursive.common.enums import TaskStatus
 from recursive.utils.display import display_plan
 from recursive.memory import Memory
 from recursive.node.abstract import AbstractNode
-import dill as pickle
+import dill as pickle  # type: ignore
 import json
 from loguru import logger
 from recursive.common.log_typing import log_typing
@@ -228,10 +228,15 @@ class GraphRunEngine:
             node_id=need_next_step_node.hashkey,
             node_goal=need_next_step_node.task_info.get("goal", "?"),
             root_id=self.root_node.hashkey,
+            ctx=None,  # Initial step start doesn't have prior context
         )
 
-        # Create ExecutionContext
-        ctx = ExecutionContext(step=step)
+        # Create ExecutionContext with initial step and node info
+        ctx = ExecutionContext(
+            step=step,
+            node_id=need_next_step_node.hashkey,
+            task_type=need_next_step_node.task_type_tag,  # Add task_type here
+        )
 
         # Execute the next step for this node
         # Update Memory
@@ -273,6 +278,7 @@ class GraphRunEngine:
             action_name=action_name,
             status_after=need_next_step_node.status.name,
             duration=step_duration,
+            ctx=ctx,  # Pass the context used in this step
         )
         if verbose:
             display_plan(self.root_node.inner_graph)

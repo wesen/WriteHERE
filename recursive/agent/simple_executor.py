@@ -33,7 +33,12 @@ class SimpleExecutor(Agent):
     @log_typing
     @overrides
     def forward(
-        self, node: AbstractNode, memory: Memory, ctx: Optional[ExecutionContext] = None, *args: Any, **kwargs: Any
+        self,
+        node: AbstractNode,
+        memory: Memory,
+        ctx: Optional[ExecutionContext] = None,
+        *args: Any,
+        **kwargs: Any
     ) -> Dict:
         """
         Execute the task represented by the node.
@@ -167,6 +172,7 @@ class SimpleExecutor(Agent):
                 to_run_outer_write_task=to_run_outer_write_task,
                 today_date=node.config.get("today_date", "Mar 26, 2025"),
                 temperature=inner_kwargs.get("temperature", None),
+                ctx=ctx,
             )
 
             # Process ReAct agent results
@@ -230,7 +236,14 @@ class SimpleExecutor(Agent):
             llm_result = {}  # Initialize
             while not succ and retry_cnt < MAX_RETRIES:
                 llm_result = get_llm_output(
-                    node, self, memory, "execute", retry_cnt > 0, ctx=ctx, *args, **kwargs
+                    node,
+                    self,
+                    memory,
+                    "execute",
+                    retry_cnt > 0,
+                    ctx=ctx,
+                    *args,
+                    **kwargs
                 )
                 # Check if the execution produced a non-empty result
                 succ = llm_result.get("result", "").strip() != ""

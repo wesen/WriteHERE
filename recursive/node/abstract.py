@@ -493,7 +493,23 @@ class AbstractNode(ABC):
                         action_name, self.status, next_status
                     )
                 )
-                result = self.do_action(action_name, memory, ctx, *args, **kwargs)
+                # Create enriched context for this specific action step
+                action_step_ctx = (
+                    ctx.with_(
+                        action_name=action_name,
+                        node_status=self.status.name,
+                        node_next_status=next_status.name,
+                    )
+                    if ctx
+                    else ExecutionContext(
+                        action_name=action_name,
+                        node_status=self.status.name,
+                        node_next_status=next_status.name,
+                    )
+                )
+                result = self.do_action(
+                    action_name, memory, action_step_ctx, *args, **kwargs
+                )  # Pass action_step_ctx
                 self.status = next_status
                 break
         else:
@@ -528,12 +544,20 @@ class AbstractNode(ABC):
                 old_status = self.status
                 # --- Emit NodeStatusChanged ---
                 if old_status != next_status:
+                    # Create context specific to this node status change
+                    event_ctx = (
+                        ctx.with_(node_id=self.hashkey, task_type=self.task_type_tag)
+                        if ctx
+                        else ExecutionContext(
+                            node_id=self.hashkey, task_type=self.task_type_tag
+                        )
+                    )
                     emit_node_status_changed(
-                        node_id=self.hashkey,
+                        node_id=self.hashkey,  # Keep explicit node_id
                         node_goal=self.task_info.get("goal", "?"),
                         old_status=old_status.name,
                         new_status=next_status.name,
-                        ctx=ctx,
+                        ctx=event_ctx,  # Pass the enriched context
                     )
                 if verbose:
                     logger.info(
@@ -688,11 +712,18 @@ class AbstractNode(ABC):
             raw_plan (list): List of task dictionaries from the planner
             ctx (ExecutionContext, optional): Execution context
         """
+        # Create a new context specific to this planning/graph building phase
+        graph_ctx = (
+            ctx.with_(node_id=self.hashkey, task_type=self.task_type_tag)
+            if ctx
+            else ExecutionContext(node_id=self.hashkey, task_type=self.task_type_tag)
+        )
+
         # --- Emit Event: plan_received ---
         emit_plan_received(
             node_id=self.hashkey,
             raw_plan=raw_plan,
-            ctx=ctx,
+            ctx=graph_ctx,  # Pass enriched context
         )
 
         if (
@@ -761,7 +792,7 @@ class AbstractNode(ABC):
                     if not task.get("atom")
                     else NodeType.EXECUTE_NODE
                 ),
-                ctx=ctx,
+                ctx=graph_ctx,  # Pass enriched context when creating nodes
             )
             nodes.append(node)
             id2node[task["id"]] = node
@@ -805,11 +836,13 @@ class AbstractNode(ABC):
         self.inner_graph.clear()
         # Add nodes
         for node in nodes:
-            self.inner_graph.add_node(node, ctx=ctx)
+            self.inner_graph.add_node(node, ctx=graph_ctx)  # Pass enriched context
         # Add edges
         for node in nodes:
             for parent_node in node.node_graph_info["parent_nodes"]:
-                self.inner_graph.add_edge(parent_node, node, ctx=ctx)
+                self.inner_graph.add_edge(
+                    parent_node, node, ctx=graph_ctx
+                )  # Pass enriched context
         self.inner_graph.topological_sort()
 
         # --- Emit Event: inner_graph_built ---
@@ -821,7 +854,7 @@ class AbstractNode(ABC):
             node_count=len(self.inner_graph.node_list),
             edge_count=edge_count,
             node_ids=[n.hashkey for n in self.inner_graph.node_list],
-            ctx=ctx,
+            ctx=graph_ctx,  # Pass enriched context
         )
 
         return
@@ -857,7 +890,17 @@ class AbstractNode(ABC):
         # Note: Action execution itself (LLM calls, Tool calls within agents)
         # should emit their own specific events.
         agent = self.agent_proxy.proxy(action_name)
-        result = getattr(self, action_name)(agent, memory, ctx=ctx, *args, **kwargs)
+
+        # Create a new context specific to this action execution
+        action_ctx = (
+            ctx.with_(node_id=self.hashkey, task_type=self.task_type_tag)
+            if ctx
+            else ExecutionContext(node_id=self.hashkey, task_type=self.task_type_tag)
+        )
+
+        result = getattr(self, action_name)(
+            agent, memory, ctx=action_ctx, *args, **kwargs
+        )  # Pass enriched context
         # Saving information
         self.result[action_name] = {
             "result": result,
@@ -910,7 +953,7 @@ class AbstractNode(ABC):
                 node_id=self.hashkey,
                 action_name=action_name,
                 result_summary=summary,
-                ctx=ctx,
+                ctx=action_ctx,  # Pass enriched context here too
             )
 
         return result

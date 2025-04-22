@@ -4,7 +4,7 @@ import os
 import warnings
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import concurrent
-from typing import List, Optional, Tuple, Type, Union
+from typing import Any, Dict, List, Optional, Tuple, Type, Union
 
 import requests
 
@@ -344,7 +344,7 @@ class SerpApiSearch(BaseSearch):
         }
         print("overwrite_cache", overwrite_cache)
 
-        url_to_results = {}
+        url_to_results: Dict[str, Any] = {}
         if search_cache is not None and not overwrite_cache:
             cache_result = search_cache.get_cache(
                 name=cache_name, call_args_dict=call_args_dict
@@ -697,22 +697,3 @@ class BingBrowser(BaseAction):
         )
 
         return search_result
-
-
-if __name__ == "__main__":
-    from recursive.cache import Cache
-
-    caches["search"] = Cache("temp/search")
-    caches["web_page"] = Cache("temp/web_page")
-    caches["llm"] = Cache("temp/llm")
-
-    browser = BingBrowser(
-        searcher_type="SerpApiSearch",
-        backend_engine="bing",
-        cc="US",
-        webpage_helper_max_threads=10,
-        search_max_thread=10,
-        pk_quota=20,
-        select_quota=4,
-        language="en",
-    )

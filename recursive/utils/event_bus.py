@@ -33,7 +33,7 @@ try:
         health_check_interval=30,  # Check connection periodically
     )
     # Test connection
-    redis_client.ping()
+    redis_client.ping()  # type: ignore
     print(f"Successfully connected to Redis at {REDIS_HOST}:{REDIS_PORT}")
 except redis.exceptions.ConnectionError as e:
     print(f"Error connecting to Redis at {REDIS_HOST}:{REDIS_PORT}: {e}")
@@ -94,7 +94,7 @@ class EventBus:
             # Use non-None assertion since we've already checked above
             self._client.xadd(
                 self._stream_name,
-                payload,
+                payload,  # type: ignore
                 maxlen=self._max_len,
                 approximate=True,  # Use approximate trimming for performance
             )
@@ -125,38 +125,73 @@ def set_run_id(run_id: str):
     _current_run_id = run_id
 
 
-def _create_event(event_type: EventType, payload: Dict[str, Any]) -> Event:
-    """Factory to create event with common fields."""
-    return Event(event_type=event_type, payload=payload, run_id=_current_run_id)
+def _create_event(
+    event_type: EventType, payload: Dict[str, Any], ctx: Optional[ExecutionContext]
+) -> Event:
+    """Factory to create event with common fields and context enrichment."""
+    # Start with the provided payload
+    final_payload = payload.copy()
+
+    # Enrich payload with context data if ctx is provided
+    if ctx:
+        if ctx.step is not None and "step" not in final_payload:
+            final_payload["step"] = ctx.step
+        if ctx.node_id is not None and "node_id" not in final_payload:
+            final_payload["node_id"] = ctx.node_id
+        if ctx.task_type is not None and "task_type" not in final_payload:
+            final_payload["task_type"] = ctx.task_type
+        if ctx.action_name is not None and "action_name" not in final_payload:
+            final_payload["action_name"] = ctx.action_name
+        if ctx.node_status is not None and "node_status" not in final_payload:
+            final_payload["node_status"] = ctx.node_status
+        if ctx.node_next_status is not None and "node_next_status" not in final_payload:
+            final_payload["node_next_status"] = ctx.node_next_status
+
+    return Event(event_type=event_type, payload=final_payload, run_id=_current_run_id)
 
 
-def emit_step_started(step: int, node_id: str, node_goal: str, root_id: str):
+def emit_step_started(
+    step: int,
+    node_id: str,
+    node_goal: str,
+    root_id: str,
+    ctx: Optional[ExecutionContext] = None,
+):
     bus.publish(
         _create_event(
             EventType.STEP_STARTED,
             {
+                # Keep explicit args for clarity, context may enrich further
                 "step": step,
                 "node_id": node_id,
                 "node_goal": node_goal,
                 "root_id": root_id,
             },
+            ctx=ctx,
         )
     )
 
 
 def emit_step_finished(
-    step: int, node_id: str, action_name: str, status_after: str, duration: float
+    step: int,
+    node_id: str,
+    action_name: str,
+    status_after: str,
+    duration: float,
+    ctx: Optional[ExecutionContext] = None,
 ):
     bus.publish(
         _create_event(
             EventType.STEP_FINISHED,
             {
+                # Keep explicit args
                 "step": step,
                 "node_id": node_id,
                 "action_name": action_name,
                 "status_after": status_after,
                 "duration_seconds": duration,
             },
+            ctx=ctx,
         )
     )
 
@@ -169,14 +204,13 @@ def emit_node_status_changed(
     ctx: Optional[ExecutionContext] = None,
 ):
     payload: Dict[str, Any] = {
-        "node_id": node_id,
+        "node_id": node_id,  # Explicit node_id remains
         "node_goal": node_goal,
         "old_status": old_status,
         "new_status": new_status,
     }
-    if ctx is not None and ctx.step is not None:
-        payload["step"] = ctx.step
-    bus.publish(_create_event(EventType.NODE_STATUS_CHANGED, payload))
+    # Context will add step, task_type etc. if available and not already present
+    bus.publish(_create_event(EventType.NODE_STATUS_CHANGED, payload, ctx=ctx))
 
 
 def emit_llm_call_started(
@@ -185,20 +219,16 @@ def emit_llm_call_started(
     prompt_messages: List[Dict[str, str]],
     prompt_preview: str,
     ctx: Optional[ExecutionContext] = None,
-    node_id: Optional[str] = None,
+    # node_id is now primarily expected via ctx
 ):
-    # Consider hashing or truncating the prompt for brevity/security if needed later
     payload: Dict[str, Any] = {
         "agent_class": agent_class,
         "model": model,
         "prompt": prompt_messages,
         "prompt_preview": prompt_preview,
     }
-    if ctx is not None and ctx.step is not None:
-        payload["step"] = ctx.step
-    if node_id:
-        payload["node_id"] = node_id
-    bus.publish(_create_event(EventType.LLM_CALL_STARTED, payload))
+    # Context will add step, node_id, task_type if available
+    bus.publish(_create_event(EventType.LLM_CALL_STARTED, payload, ctx=ctx))
 
 
 def emit_llm_call_completed(
@@ -208,7 +238,7 @@ def emit_llm_call_completed(
     response_content: str,
     error: Optional[str] = None,
     ctx: Optional[ExecutionContext] = None,
-    node_id: Optional[str] = None,
+    # node_id is now primarily expected via ctx
     token_usage: Optional[dict] = None,
 ):
     payload: Dict[str, Any] = {
@@ -220,28 +250,27 @@ def emit_llm_call_completed(
     }
     if error:
         payload["error"] = error
-    if ctx is not None and ctx.step is not None:
-        payload["step"] = ctx.step
-    if node_id:
-        payload["node_id"] = node_id
     if token_usage:
-        payload["token_usage"] = (
-            token_usage  # e.g., {'prompt_tokens': 100, 'completion_tokens': 50}
-        )
-    bus.publish(_create_event(EventType.LLM_CALL_COMPLETED, payload))
+        payload["token_usage"] = token_usage
+
+    # Context will add step, node_id, task_type if available
+    bus.publish(_create_event(EventType.LLM_CALL_COMPLETED, payload, ctx=ctx))
 
 
 def emit_tool_invoked(
-    tool_name: str, api_name: str, args_summary: str, node_id: Optional[str] = None
+    tool_name: str,
+    api_name: str,
+    args_summary: str,
+    ctx: Optional[ExecutionContext] = None,
+    # node_id is now primarily expected via ctx
 ):
     payload: Dict[str, Any] = {
         "tool_name": tool_name,
         "api_name": api_name,
         "args_summary": args_summary[:500] + "...",
     }
-    if node_id:
-        payload["node_id"] = node_id
-    bus.publish(_create_event(EventType.TOOL_INVOKED, payload))
+    # Context will add step, node_id, task_type if available
+    bus.publish(_create_event(EventType.TOOL_INVOKED, payload, ctx=ctx))
 
 
 def emit_tool_returned(
@@ -251,7 +280,8 @@ def emit_tool_returned(
     duration: float,
     result_summary: str,
     error: Optional[str] = None,
-    node_id: Optional[str] = None,
+    ctx: Optional[ExecutionContext] = None,
+    # node_id is now primarily expected via ctx
 ):
     payload: Dict[str, Any] = {
         "tool_name": tool_name,
@@ -262,19 +292,18 @@ def emit_tool_returned(
     }
     if error:
         payload["error"] = error
-    if node_id:
-        payload["node_id"] = node_id
-    bus.publish(_create_event(EventType.TOOL_RETURNED, payload))
+    # Context will add step, node_id, task_type if available
+    bus.publish(_create_event(EventType.TOOL_RETURNED, payload, ctx=ctx))
 
 
 # --- NEW EMITTERS ---
 
 
 def emit_node_created(
-    node_id: str,
+    node_id: str,  # Keep explicit node_id as it's the primary identifier here
     node_nid: str,
     node_type: str,
-    task_type: str,
+    task_type: str,  # Keep explicit task_type
     task_goal: str,
     layer: int,
     outer_node_id: Optional[str],
@@ -293,24 +322,21 @@ def emit_node_created(
         "root_node_id": root_node_id,
         "initial_parent_nids": initial_parent_nids,
     }
-    if ctx is not None and ctx.step is not None:
-        payload["step"] = ctx.step
-
-    bus.publish(_create_event(EventType.NODE_CREATED, payload))
+    # Context will add step if available
+    bus.publish(_create_event(EventType.NODE_CREATED, payload, ctx=ctx))
 
 
 def emit_plan_received(
-    node_id: str,
+    node_id: str,  # Keep explicit node_id
     raw_plan: List[Dict],
     ctx: Optional[ExecutionContext] = None,
 ):
     payload: Dict[str, Any] = {
-        "node_id": node_id,
+        "node_id": node_id,  # Explicit node_id remains
         "raw_plan": raw_plan,
     }
-    if ctx is not None and ctx.step is not None:
-        payload["step"] = ctx.step
-    bus.publish(_create_event(EventType.PLAN_RECEIVED, payload))
+    # Context will add step, task_type etc. if available
+    bus.publish(_create_event(EventType.PLAN_RECEIVED, payload, ctx=ctx))
 
 
 def emit_node_added(
@@ -324,9 +350,8 @@ def emit_node_added(
         "added_node_id": added_node_id,
         "added_node_nid": added_node_nid,
     }
-    if ctx is not None and ctx.step is not None:
-        payload["step"] = ctx.step
-    bus.publish(_create_event(EventType.NODE_ADDED, payload))
+    # Context will add step, potentially owner's node_id/task_type if needed
+    bus.publish(_create_event(EventType.NODE_ADDED, payload, ctx=ctx))
 
 
 def emit_edge_added(
@@ -344,40 +369,37 @@ def emit_edge_added(
         "parent_node_nid": parent_node_nid,
         "child_node_nid": child_node_nid,
     }
-    if ctx is not None and ctx.step is not None:
-        payload["step"] = ctx.step
-    bus.publish(_create_event(EventType.EDGE_ADDED, payload))
+    # Context will add step, potentially owner's node_id/task_type
+    bus.publish(_create_event(EventType.EDGE_ADDED, payload, ctx=ctx))
 
 
 def emit_inner_graph_built(
-    node_id: str,
+    node_id: str,  # Keep explicit node_id
     node_count: int,
     edge_count: int,
     node_ids: List[str],
     ctx: Optional[ExecutionContext] = None,
 ):
     payload: Dict[str, Any] = {
-        "node_id": node_id,
+        "node_id": node_id,  # Explicit node_id remains
         "node_count": node_count,
         "edge_count": edge_count,
         "node_ids": node_ids,
     }
-    if ctx is not None and ctx.step is not None:
-        payload["step"] = ctx.step
-    bus.publish(_create_event(EventType.INNER_GRAPH_BUILT, payload))
+    # Context will add step, task_type etc. if available
+    bus.publish(_create_event(EventType.INNER_GRAPH_BUILT, payload, ctx=ctx))
 
 
 def emit_node_result_available(
-    node_id: str,
+    node_id: str,  # Keep explicit node_id
     action_name: str,
     result_summary: str,
     ctx: Optional[ExecutionContext] = None,
 ):
     payload: Dict[str, Any] = {
-        "node_id": node_id,
+        "node_id": node_id,  # Explicit node_id remains
         "action_name": action_name,
         "result_summary": result_summary[:500] + "...",
     }
-    if ctx is not None and ctx.step is not None:
-        payload["step"] = ctx.step
-    bus.publish(_create_event(EventType.NODE_RESULT_AVAILABLE, payload))
+    # Context will add step, task_type etc. if available
+    bus.publish(_create_event(EventType.NODE_RESULT_AVAILABLE, payload, ctx=ctx))

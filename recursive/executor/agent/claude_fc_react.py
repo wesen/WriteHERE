@@ -1,4 +1,4 @@
-from typing import Dict, List, Union
+from typing import Dict, List, Union, Optional
 from recursive.executor.agent import ActionExecutor
 from recursive.executor.schema import (
     ActionReturn,
@@ -12,6 +12,8 @@ from recursive.llm.base import OpenAIApiProxy
 from loguru import logger
 from recursive.utils.parsing import parse_hierarchy_tags_result
 from recursive.agent.prompts.base import prompt_register
+from recursive.node.abstract import AbstractNode
+from recursive.common.context import ExecutionContext
 
 # The Chinese prompts for ReAct
 
@@ -223,6 +225,7 @@ class SearchAgent(BaseAgent):
         to_run_root_question,
         to_run_outer_write_task,
         today_date,
+        ctx: Optional[ExecutionContext] = None,
         **kwargs,
     ) -> AgentReturn:
         # assert isinstance(message, str)
@@ -302,7 +305,9 @@ class SearchAgent(BaseAgent):
                 "global_start_index": global_start_index,
             }
             logger.info("Do Action {}, param: {}".format(action, action_input))
-            action_return: ActionReturn = self._action_executor(action, action_input)
+            action_return: ActionReturn = self._action_executor(
+                action, action_input, ctx=ctx
+            )
             # print("action_return:\n{}".format(action_return))
             agent_return.actions.append(action_return)
             # print(agent_return, flush=True)

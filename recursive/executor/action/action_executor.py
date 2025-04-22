@@ -1,8 +1,9 @@
-from typing import Dict, List, Union
+from typing import Dict, List, Union, Optional
 import time  # For timing
 import json  # For args summary
 from loguru import logger  # Added logger
 
+from recursive.common.context import ExecutionContext
 from recursive.executor.schema import (
     ActionReturn,
     ActionValidCode,
@@ -84,9 +85,10 @@ class ActionExecutor:
         if name in self.actions:
             del self.actions[name]
 
-    def __call__(self, name: str, command: str) -> ActionReturn:
+    def __call__(
+        self, name: str, command: str, ctx: Optional[ExecutionContext] = None
+    ) -> ActionReturn:
         action_name, api_name = name.split(".") if "." in name else (name, "run")
-        node_id = None  # TODO: Figure out how to get node context here if needed
         tool_start_time = time.monotonic()
         action_return = None
         error_msg = None
@@ -110,7 +112,7 @@ class ActionExecutor:
                 tool_name=action_name,
                 api_name=api_name,
                 args_summary=args_summary,
-                node_id=node_id,
+                ctx=ctx,
             )
 
             try:
@@ -161,7 +163,7 @@ class ActionExecutor:
             result_summary=result_summary,
             error=error_msg
             or getattr(action_return, "errmsg", None),  # Prioritize direct exception
-            node_id=node_id,
+            ctx=ctx,
         )
 
         return action_return
