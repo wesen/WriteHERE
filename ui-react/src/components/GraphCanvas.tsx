@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useCallback } from 'react';
 import { Canvas, Node, Edge, ElkCanvasLayoutOptions } from 'reaflow';
 import { useSelector } from 'react-redux';
 import { selectReaflowGraph } from '../features/graph/reaflowAdapter';
@@ -7,6 +7,7 @@ import './reaflow/ReaflowCanvas.css';
 import { RootState } from '../app/store';
 import Spinner from 'react-bootstrap/Spinner';
 import Alert from 'react-bootstrap/Alert';
+import NodeDetailModal from './NodeDetailModal';
 
 const layout: ElkCanvasLayoutOptions = {
   'elk.algorithm': 'layered',
@@ -25,18 +26,20 @@ export const GraphCanvas: React.FC = () => {
     error: state.graph.error
   }));
   
-  const [selected, setSelected] = React.useState<string | null>(null);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [showNodeModal, setShowNodeModal] = useState(false);
 
-  const onNodeClick = React.useCallback((e: React.MouseEvent, data: any) => {
-    e.stopPropagation();
-    if (data.node) {
-      setSelected(data.node.id);
-    }
+  const onNodeClick = useCallback((id: string) => {
+    console.log("Node clicked:", id);
+    setSelectedNodeId(id);
+    setShowNodeModal(true);
   }, []);
 
   // Clear selection when clicking on canvas
-  const onCanvasClick = React.useCallback(() => {
-    setSelected(null);
+  const onCanvasClick = useCallback(() => {
+    // Optionally: keep track of selection for visual highlight separately
+    // Or hide the modal if clicked outside
+    // setShowNodeModal(false); // Consider if this is desired behavior
   }, []);
 
   // Show loading indicator
@@ -71,7 +74,7 @@ export const GraphCanvas: React.FC = () => {
   }
 
   return (
-    <div style={noSelectStyle} onClick={onCanvasClick}>
+    <div style={{ userSelect: 'none' }} onClick={onCanvasClick}>
       <Canvas
         direction="DOWN"
         fit
@@ -85,7 +88,7 @@ export const GraphCanvas: React.FC = () => {
             {(p) => (
               <CustomNode
                 nodeProps={p}
-                selectedNode={selected}
+                selectedNode={selectedNodeId}
                 onNodeClick={onNodeClick}
               />
             )}
@@ -93,6 +96,17 @@ export const GraphCanvas: React.FC = () => {
         }
         edge={<Edge />}
       />
+      {/* Render the modal */}
+      {selectedNodeId && (
+        <NodeDetailModal
+          show={showNodeModal}
+          onHide={() => {
+            setShowNodeModal(false);
+            setSelectedNodeId(null); // Clear selection when modal closes
+          }}
+          nodeId={selectedNodeId}
+        />
+      )}
     </div>
   );
 }; 

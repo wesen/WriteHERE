@@ -41,6 +41,8 @@
 
 - [ ] Record all events to sqlite to analyze later
 
+- [ ] Restore recursive state from sqlite
+
 ## Future
 
 - [ ] Restart nodes and tasks

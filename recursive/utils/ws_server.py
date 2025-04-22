@@ -123,14 +123,19 @@ if assets_dir.exists() and assets_dir.is_dir():
     print(f"Serving static assets from: {assets_dir}")
 
 
+# --- End Graph API Endpoints ---
+
+
+# --- End Serve React App ---
+
+# --- New Graph API Endpoints ---
+
+
 @app.get("/api/events")
 async def get_events():
     """Dummy endpoint for initial event fetch."""
     print("get_events")
     return {"events": [], "status": "connected"}
-
-
-# --- New Graph API Endpoints ---
 
 
 @app.get("/api/graph")
@@ -169,7 +174,24 @@ async def get_edge(edge_id: str):
     raise HTTPException(status_code=404, detail="Edge not found")
 
 
-# --- End Graph API Endpoints ---
+@app.websocket("/ws/events")
+async def websocket_endpoint(websocket: WebSocket):
+    """Handles WebSocket connections."""
+    await websocket.accept()
+    print(f"Client connected: {websocket.client}")
+    active_connections.add(websocket)
+    try:
+        # Keep the connection alive, listening for disconnect
+        while True:
+            # We don't expect messages from client in this simple broadcast setup
+            # But keep receiving to detect disconnects
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        print(f"Client disconnected: {websocket.client}")
+    except Exception as e:
+        print(f"Error in WebSocket connection: {e}")
+    finally:
+        active_connections.discard(websocket)
 
 
 # Serve the main index.html for the root path and any other unhandled paths
@@ -193,29 +215,6 @@ async def serve_react_app(full_path: str):
             content=f"<html><body><h1>React App Not Found</h1><p>Build directory not found or index.html missing at {REACT_INDEX_FILE}. Run 'npm run build' in ui-react.</p></body></html>",
             status_code=404,
         )
-
-
-# --- End Serve React App ---
-
-
-@app.websocket("/ws/events")
-async def websocket_endpoint(websocket: WebSocket):
-    """Handles WebSocket connections."""
-    await websocket.accept()
-    print(f"Client connected: {websocket.client}")
-    active_connections.add(websocket)
-    try:
-        # Keep the connection alive, listening for disconnect
-        while True:
-            # We don't expect messages from client in this simple broadcast setup
-            # But keep receiving to detect disconnects
-            await websocket.receive_text()
-    except WebSocketDisconnect:
-        print(f"Client disconnected: {websocket.client}")
-    except Exception as e:
-        print(f"Error in WebSocket connection: {e}")
-    finally:
-        active_connections.discard(websocket)
 
 
 def run_server():
