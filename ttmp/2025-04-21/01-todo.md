@@ -3,6 +3,7 @@
 - [ ] Some nodes don't seem to have parents
 - [ ] What about N/A status of new nodes?
 - [ ] Add run_id to the run started event
+- [ ] First node never has a node_added event
 
 ## TODO menial
 
@@ -34,7 +35,11 @@
 
   - [x] Use redux to process incoming (graph) events
 
-- [ ] Collect the node events to server a built up graph on the backend
+- [x] Collect the node events to server a built up graph on the backend
+
+- [ ] Record LLM calls to replay to avoid hitting the API
+
+- [ ] Record all events to sqlite to analyze later
 
 ## Future
 

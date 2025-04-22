@@ -3,6 +3,7 @@ import {
   nodeAdded as graphNodeAdded,
   nodeUpdated as graphNodeUpdated,
   edgeAdded as graphEdgeAdded,
+  clearGraph as graphClearGraph,
 } from "../graph/graphSlice"; // Import graph actions
 
 // Define the structure for a single message in the prompt
@@ -339,6 +340,10 @@ export const eventsApi = createApi({
 
             /* 2️⃣  mirror graph‑relevant events */
             switch (msg.event_type) {
+              case "run_started": {
+                dispatch(graphClearGraph());
+                break;
+              }
               case "node_created": {
                 // Ensure payload is correctly typed
                 const p = msg.payload as NodeCreatedPayload;

@@ -8,9 +8,16 @@ from pathlib import Path  # Added for path manipulation
 import redis
 import redis.asyncio as aredis
 import uvicorn
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse, FileResponse  # Added FileResponse
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi.responses import (
+    HTMLResponse,
+    FileResponse,
+    JSONResponse,
+)  # Added JSONResponse
 from fastapi.staticfiles import StaticFiles
+
+# Import the new GraphStateManager
+from recursive.utils.graph_state_manager import GraphStateManager
 
 # --- Configuration ---
 # Reuse stream name from event_bus or define separately
@@ -29,6 +36,9 @@ REACT_INDEX_FILE = REACT_BUILD_DIR / "index.html"
 # Global set to keep track of active WebSocket connections
 active_connections: Set[WebSocket] = set()
 
+# Initialize the global graph state manager
+graph_manager = GraphStateManager()
+
 
 async def redis_listener(redis_client: aredis.Redis):
     """Listens to Redis stream and broadcasts messages to connected websockets."""
@@ -46,6 +56,14 @@ async def redis_listener(redis_client: aredis.Redis):
                         # Assuming the event JSON is stored under 'json_payload' key
                         if "json_payload" in fields:
                             message_data = fields["json_payload"]
+
+                            # Process the event for graph state management
+                            try:
+                                event = json.loads(message_data)
+                                await graph_manager.process_event(event)
+                            except Exception as e:
+                                print(f"Error processing event for graph state: {e}")
+
                             # Broadcast to all connected clients
                             # Create a list copy to avoid issues if set changes during iteration
                             disconnected_peers = set()
@@ -110,6 +128,48 @@ async def get_events():
     """Dummy endpoint for initial event fetch."""
     print("get_events")
     return {"events": [], "status": "connected"}
+
+
+# --- New Graph API Endpoints ---
+
+
+@app.get("/api/graph")
+async def get_graph():
+    """Return complete graph state matching Redux store structure."""
+    return graph_manager.get_graph_state()
+
+
+@app.get("/api/graph/nodes")
+async def get_nodes():
+    """Return all nodes."""
+    return {"nodes": graph_manager.get_nodes()}
+
+
+@app.get("/api/graph/nodes/{node_id}")
+async def get_node(node_id: str):
+    """Return specific node details."""
+    node = graph_manager.get_node(node_id)
+    if node:
+        return node
+    raise HTTPException(status_code=404, detail="Node not found")
+
+
+@app.get("/api/graph/edges")
+async def get_edges():
+    """Return all edges."""
+    return {"edges": graph_manager.get_edges()}
+
+
+@app.get("/api/graph/edges/{edge_id}")
+async def get_edge(edge_id: str):
+    """Return specific edge details."""
+    edge = graph_manager.get_edge(edge_id)
+    if edge:
+        return edge
+    raise HTTPException(status_code=404, detail="Edge not found")
+
+
+# --- End Graph API Endpoints ---
 
 
 # Serve the main index.html for the root path and any other unhandled paths

@@ -4,6 +4,7 @@ import {
   EntityState,
   Update,
   PayloadAction,
+  createAsyncThunk,
 } from "@reduxjs/toolkit";
 
 /* ——— Domain models ——— */
@@ -27,6 +28,9 @@ export type Edge = {
 interface GraphSliceState {
   nodes: EntityState<Node, string>;
   edges: EntityState<Edge, string>;
+  initialized: boolean;
+  loading: boolean;
+  error: string | null;
 }
 
 /* ——— Normalised adapters ——— */
@@ -37,7 +41,28 @@ const edges = createEntityAdapter<Edge>();
 const initialState: GraphSliceState = {
   nodes: nodes.getInitialState(),
   edges: edges.getInitialState(),
+  initialized: false,
+  loading: false,
+  error: null,
 };
+
+// Async thunk to initialize graph state from the server
+export const initializeGraphState = createAsyncThunk(
+  "graph/initialize",
+  async (_, { rejectWithValue }) => {
+    try {
+      const response = await fetch("/api/graph");
+      if (!response.ok) {
+        throw new Error(`Error fetching graph state: ${response.statusText}`);
+      }
+      return await response.json();
+    } catch (error) {
+      return rejectWithValue(
+        error instanceof Error ? error.message : "Unknown error"
+      );
+    }
+  }
+);
 
 const slice = createSlice({
   name: "graph",
@@ -54,10 +79,68 @@ const slice = createSlice({
     edgeAdded: (state, action: PayloadAction<Edge>) => {
       edges.addOne(state.edges, action.payload);
     },
+    // Manual initialization action (can be used for testing)
+    initializeState: (state, action: PayloadAction<any>) => {
+      if (action.payload?.graph) {
+        // Extract nodes
+        if (action.payload.graph.nodes) {
+          state.nodes = action.payload.graph.nodes;
+        }
+
+        // Extract edges
+        if (action.payload.graph.edges) {
+          state.edges = action.payload.graph.edges;
+        }
+      }
+      state.initialized = true;
+    },
+    clearGraph: (state) => {
+      state.nodes = nodes.getInitialState();
+      state.edges = edges.getInitialState();
+      state.initialized = true;
+      state.loading = false;
+      state.error = null;
+    },
+  },
+  extraReducers: (builder) => {
+    builder
+      .addCase(initializeGraphState.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(initializeGraphState.fulfilled, (state, action) => {
+        state.loading = false;
+
+        // Only replace state if we got valid data
+        if (action.payload?.graph) {
+          // Extract nodes
+          if (action.payload.graph.nodes) {
+            state.nodes = action.payload.graph.nodes;
+          }
+
+          // Extract edges
+          if (action.payload.graph.edges) {
+            state.edges = action.payload.graph.edges;
+          }
+
+          state.initialized = true;
+        }
+      })
+      .addCase(initializeGraphState.rejected, (state, action) => {
+        state.loading = false;
+        state.error =
+          (action.payload as string) || "Failed to load graph state";
+      });
   },
 });
 
-export const { nodeAdded, nodeUpdated, edgeAdded } = slice.actions;
+export const {
+  nodeAdded,
+  nodeUpdated,
+  edgeAdded,
+  initializeState,
+  clearGraph,
+} = slice.actions;
 export default slice.reducer;
 
 // Export the adapters themselves if needed elsewhere, though usually selectors are preferred

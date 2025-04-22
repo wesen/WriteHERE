@@ -1,0 +1,234 @@
+{
+    graph: {
+      nodes: {
+        ids: [
+          '19941ba3-f939-4dc0-b0b6-40ef1105661e',
+          'c5731e2e-b035-4926-bf5f-2654920c522b',
+          '410674ad-c0ba-4304-bd00-41fa90d65653',
+          '164b17b3-5981-4667-b991-55dc40115167',
+          '7cb29c5a-c28c-4307-b080-f98fca632fba',
+          'e6d93dfa-615a-4a82-9073-fb46f6019757',
+          '3cddcf71-3bfe-4622-a510-df1160b310ff',
+          '8317dfe1-2e3d-4601-8555-079bda5ff515',
+          'd8e08e32-06d1-4b30-adb6-cd30c46505c9',
+          'ea2e21e1-b1e9-492e-80bd-7fa17fe1bf33',
+          '3f62d7fe-3726-4378-a495-88d7444b714f',
+          'bd195625-1068-4fce-9f3a-4dfd3e1ebd35',
+          'ba7c4b2a-e7de-439d-8e66-d608ca5ae2c1',
+          'fc2136bd-89fa-4e3d-9794-375c65ca51f8'
+        ],
+        entities: {
+          '19941ba3-f939-4dc0-b0b6-40ef1105661e': {
+            id: '19941ba3-f939-4dc0-b0b6-40ef1105661e',
+            nid: '',
+            type: 'PLAN_NODE',
+            goal: 'What is the commercial value of a long-article writing AI Agent? Write a detailed analysis report. ',
+            layer: 0,
+            taskType: 'COMPOSITION'
+          },
+          'c5731e2e-b035-4926-bf5f-2654920c522b': {
+            id: 'c5731e2e-b035-4926-bf5f-2654920c522b',
+            nid: '1',
+            type: 'PLAN_NODE',
+            goal: 'Design the overall outline of the report, including key sections and arguments to be presented.',
+            layer: 1,
+            taskType: 'REASONING',
+            status: 'READY'
+          },
+          '410674ad-c0ba-4304-bd00-41fa90d65653': {
+            id: '410674ad-c0ba-4304-bd00-41fa90d65653',
+            nid: '2',
+            type: 'PLAN_NODE',
+            goal: 'Collect data on current market demand for AI writing tools, including statistics and trends.',
+            layer: 1,
+            taskType: 'RETRIEVAL',
+            status: 'READY'
+          },
+          '164b17b3-5981-4667-b991-55dc40115167': {
+            id: '164b17b3-5981-4667-b991-55dc40115167',
+            nid: '3',
+            type: 'PLAN_NODE',
+            goal: 'Research existing competitors in the AI writing space and their offerings.',
+            layer: 1,
+            taskType: 'RETRIEVAL',
+            status: 'READY'
+          },
+          '7cb29c5a-c28c-4307-b080-f98fca632fba': {
+            id: '7cb29c5a-c28c-4307-b080-f98fca632fba',
+            nid: '4',
+            type: 'PLAN_NODE',
+            goal: 'Gather case studies or examples of successful implementations of long-article writing AI Agents.',
+            layer: 1,
+            taskType: 'RETRIEVAL',
+            status: 'READY'
+          },
+          'e6d93dfa-615a-4a82-9073-fb46f6019757': {
+            id: 'e6d93dfa-615a-4a82-9073-fb46f6019757',
+            nid: '5',
+            type: 'PLAN_NODE',
+            goal: 'Write the introduction and background section of the report.',
+            layer: 1,
+            taskType: 'COMPOSITION'
+          },
+          '3cddcf71-3bfe-4622-a510-df1160b310ff': {
+            id: '3cddcf71-3bfe-4622-a510-df1160b310ff',
+            nid: '6',
+            type: 'PLAN_NODE',
+            goal: 'Write the market analysis section based on the gathered data.',
+            layer: 1,
+            taskType: 'COMPOSITION'
+          },
+          '8317dfe1-2e3d-4601-8555-079bda5ff515': {
+            id: '8317dfe1-2e3d-4601-8555-079bda5ff515',
+            nid: '7',
+            type: 'PLAN_NODE',
+            goal: 'Write the competitive analysis section, detailing the strengths and weaknesses of competitors.',
+            layer: 1,
+            taskType: 'COMPOSITION'
+          },
+          'd8e08e32-06d1-4b30-adb6-cd30c46505c9': {
+            id: 'd8e08e32-06d1-4b30-adb6-cd30c46505c9',
+            nid: '8',
+            type: 'PLAN_NODE',
+            goal: 'Write the applications section, highlighting potential use cases for the AI Agent.',
+            layer: 1,
+            taskType: 'COMPOSITION'
+          },
+          'ea2e21e1-b1e9-492e-80bd-7fa17fe1bf33': {
+            id: 'ea2e21e1-b1e9-492e-80bd-7fa17fe1bf33',
+            nid: '9',
+            type: 'PLAN_NODE',
+            goal: 'Write the conclusion, summarizing the findings and providing recommendations.',
+            layer: 1,
+            taskType: 'COMPOSITION'
+          },
+          '3f62d7fe-3726-4378-a495-88d7444b714f': {
+            id: '3f62d7fe-3726-4378-a495-88d7444b714f',
+            nid: '0',
+            type: 'EXECUTE_NODE',
+            goal: 'Design the overall outline of the report, including key sections and arguments to be presented.',
+            layer: 2,
+            taskType: 'REASONING',
+            status: 'READY'
+          },
+          'bd195625-1068-4fce-9f3a-4dfd3e1ebd35': {
+            id: 'bd195625-1068-4fce-9f3a-4dfd3e1ebd35',
+            nid: '0',
+            type: 'EXECUTE_NODE',
+            goal: 'Collect data on current market demand for AI writing tools, including statistics and trends.',
+            layer: 2,
+            taskType: 'RETRIEVAL',
+            status: 'READY'
+          },
+          'ba7c4b2a-e7de-439d-8e66-d608ca5ae2c1': {
+            id: 'ba7c4b2a-e7de-439d-8e66-d608ca5ae2c1',
+            nid: '0',
+            type: 'EXECUTE_NODE',
+            goal: 'Research existing competitors in the AI writing space and their offerings.',
+            layer: 2,
+            taskType: 'RETRIEVAL',
+            status: 'READY'
+          },
+          'fc2136bd-89fa-4e3d-9794-375c65ca51f8': {
+            id: 'fc2136bd-89fa-4e3d-9794-375c65ca51f8',
+            nid: '0',
+            type: 'EXECUTE_NODE',
+            goal: 'Gather case studies or examples of successful implementations of long-article writing AI Agents.',
+            layer: 2,
+            taskType: 'RETRIEVAL',
+            status: 'READY'
+          }
+        }
+      },
+      edges: {
+        ids: [
+          'c5731e2e-b035-4926-bf5f-2654920c522b-e6d93dfa-615a-4a82-9073-fb46f6019757',
+          '410674ad-c0ba-4304-bd00-41fa90d65653-3cddcf71-3bfe-4622-a510-df1160b310ff',
+          'e6d93dfa-615a-4a82-9073-fb46f6019757-3cddcf71-3bfe-4622-a510-df1160b310ff',
+          '164b17b3-5981-4667-b991-55dc40115167-8317dfe1-2e3d-4601-8555-079bda5ff515',
+          'e6d93dfa-615a-4a82-9073-fb46f6019757-8317dfe1-2e3d-4601-8555-079bda5ff515',
+          '3cddcf71-3bfe-4622-a510-df1160b310ff-8317dfe1-2e3d-4601-8555-079bda5ff515',
+          '7cb29c5a-c28c-4307-b080-f98fca632fba-d8e08e32-06d1-4b30-adb6-cd30c46505c9',
+          'e6d93dfa-615a-4a82-9073-fb46f6019757-d8e08e32-06d1-4b30-adb6-cd30c46505c9',
+          '3cddcf71-3bfe-4622-a510-df1160b310ff-d8e08e32-06d1-4b30-adb6-cd30c46505c9',
+          '8317dfe1-2e3d-4601-8555-079bda5ff515-d8e08e32-06d1-4b30-adb6-cd30c46505c9',
+          'e6d93dfa-615a-4a82-9073-fb46f6019757-ea2e21e1-b1e9-492e-80bd-7fa17fe1bf33',
+          '3cddcf71-3bfe-4622-a510-df1160b310ff-ea2e21e1-b1e9-492e-80bd-7fa17fe1bf33',
+          '8317dfe1-2e3d-4601-8555-079bda5ff515-ea2e21e1-b1e9-492e-80bd-7fa17fe1bf33',
+          'd8e08e32-06d1-4b30-adb6-cd30c46505c9-ea2e21e1-b1e9-492e-80bd-7fa17fe1bf33'
+        ],
+        entities: {
+          'c5731e2e-b035-4926-bf5f-2654920c522b-e6d93dfa-615a-4a82-9073-fb46f6019757': {
+            id: 'c5731e2e-b035-4926-bf5f-2654920c522b-e6d93dfa-615a-4a82-9073-fb46f6019757',
+            parent: 'c5731e2e-b035-4926-bf5f-2654920c522b',
+            child: 'e6d93dfa-615a-4a82-9073-fb46f6019757'
+          },
+          '410674ad-c0ba-4304-bd00-41fa90d65653-3cddcf71-3bfe-4622-a510-df1160b310ff': {
+            id: '410674ad-c0ba-4304-bd00-41fa90d65653-3cddcf71-3bfe-4622-a510-df1160b310ff',
+            parent: '410674ad-c0ba-4304-bd00-41fa90d65653',
+            child: '3cddcf71-3bfe-4622-a510-df1160b310ff'
+          },
+          'e6d93dfa-615a-4a82-9073-fb46f6019757-3cddcf71-3bfe-4622-a510-df1160b310ff': {
+            id: 'e6d93dfa-615a-4a82-9073-fb46f6019757-3cddcf71-3bfe-4622-a510-df1160b310ff',
+            parent: 'e6d93dfa-615a-4a82-9073-fb46f6019757',
+            child: '3cddcf71-3bfe-4622-a510-df1160b310ff'
+          },
+          '164b17b3-5981-4667-b991-55dc40115167-8317dfe1-2e3d-4601-8555-079bda5ff515': {
+            id: '164b17b3-5981-4667-b991-55dc40115167-8317dfe1-2e3d-4601-8555-079bda5ff515',
+            parent: '164b17b3-5981-4667-b991-55dc40115167',
+            child: '8317dfe1-2e3d-4601-8555-079bda5ff515'
+          },
+          'e6d93dfa-615a-4a82-9073-fb46f6019757-8317dfe1-2e3d-4601-8555-079bda5ff515': {
+            id: 'e6d93dfa-615a-4a82-9073-fb46f6019757-8317dfe1-2e3d-4601-8555-079bda5ff515',
+            parent: 'e6d93dfa-615a-4a82-9073-fb46f6019757',
+            child: '8317dfe1-2e3d-4601-8555-079bda5ff515'
+          },
+          '3cddcf71-3bfe-4622-a510-df1160b310ff-8317dfe1-2e3d-4601-8555-079bda5ff515': {
+            id: '3cddcf71-3bfe-4622-a510-df1160b310ff-8317dfe1-2e3d-4601-8555-079bda5ff515',
+            parent: '3cddcf71-3bfe-4622-a510-df1160b310ff',
+            child: '8317dfe1-2e3d-4601-8555-079bda5ff515'
+          },
+          '7cb29c5a-c28c-4307-b080-f98fca632fba-d8e08e32-06d1-4b30-adb6-cd30c46505c9': {
+            id: '7cb29c5a-c28c-4307-b080-f98fca632fba-d8e08e32-06d1-4b30-adb6-cd30c46505c9',
+            parent: '7cb29c5a-c28c-4307-b080-f98fca632fba',
+            child: 'd8e08e32-06d1-4b30-adb6-cd30c46505c9'
+          },
+          'e6d93dfa-615a-4a82-9073-fb46f6019757-d8e08e32-06d1-4b30-adb6-cd30c46505c9': {
+            id: 'e6d93dfa-615a-4a82-9073-fb46f6019757-d8e08e32-06d1-4b30-adb6-cd30c46505c9',
+            parent: 'e6d93dfa-615a-4a82-9073-fb46f6019757',
+            child: 'd8e08e32-06d1-4b30-adb6-cd30c46505c9'
+          },
+          '3cddcf71-3bfe-4622-a510-df1160b310ff-d8e08e32-06d1-4b30-adb6-cd30c46505c9': {
+            id: '3cddcf71-3bfe-4622-a510-df1160b310ff-d8e08e32-06d1-4b30-adb6-cd30c46505c9',
+            parent: '3cddcf71-3bfe-4622-a510-df1160b310ff',
+            child: 'd8e08e32-06d1-4b30-adb6-cd30c46505c9'
+          },
+          '8317dfe1-2e3d-4601-8555-079bda5ff515-d8e08e32-06d1-4b30-adb6-cd30c46505c9': {
+            id: '8317dfe1-2e3d-4601-8555-079bda5ff515-d8e08e32-06d1-4b30-adb6-cd30c46505c9',
+            parent: '8317dfe1-2e3d-4601-8555-079bda5ff515',
+            child: 'd8e08e32-06d1-4b30-adb6-cd30c46505c9'
+          },
+          'e6d93dfa-615a-4a82-9073-fb46f6019757-ea2e21e1-b1e9-492e-80bd-7fa17fe1bf33': {
+            id: 'e6d93dfa-615a-4a82-9073-fb46f6019757-ea2e21e1-b1e9-492e-80bd-7fa17fe1bf33',
+            parent: 'e6d93dfa-615a-4a82-9073-fb46f6019757',
+            child: 'ea2e21e1-b1e9-492e-80bd-7fa17fe1bf33'
+          },
+          '3cddcf71-3bfe-4622-a510-df1160b310ff-ea2e21e1-b1e9-492e-80bd-7fa17fe1bf33': {
+            id: '3cddcf71-3bfe-4622-a510-df1160b310ff-ea2e21e1-b1e9-492e-80bd-7fa17fe1bf33',
+            parent: '3cddcf71-3bfe-4622-a510-df1160b310ff',
+            child: 'ea2e21e1-b1e9-492e-80bd-7fa17fe1bf33'
+          },
+          '8317dfe1-2e3d-4601-8555-079bda5ff515-ea2e21e1-b1e9-492e-80bd-7fa17fe1bf33': {
+            id: '8317dfe1-2e3d-4601-8555-079bda5ff515-ea2e21e1-b1e9-492e-80bd-7fa17fe1bf33',
+            parent: '8317dfe1-2e3d-4601-8555-079bda5ff515',
+            child: 'ea2e21e1-b1e9-492e-80bd-7fa17fe1bf33'
+          },
+          'd8e08e32-06d1-4b30-adb6-cd30c46505c9-ea2e21e1-b1e9-492e-80bd-7fa17fe1bf33': {
+            id: 'd8e08e32-06d1-4b30-adb6-cd30c46505c9-ea2e21e1-b1e9-492e-80bd-7fa17fe1bf33',
+            parent: 'd8e08e32-06d1-4b30-adb6-cd30c46505c9',
+            child: 'ea2e21e1-b1e9-492e-80bd-7fa17fe1bf33'
+          }
+        }
+      }
+    }
+  }
