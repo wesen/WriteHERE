@@ -134,18 +134,21 @@ def _create_event(
 
     # Enrich payload with context data if ctx is provided
     if ctx:
-        if ctx.step is not None and "step" not in final_payload:
-            final_payload["step"] = ctx.step
-        if ctx.node_id is not None and "node_id" not in final_payload:
-            final_payload["node_id"] = ctx.node_id
-        if ctx.task_type is not None and "task_type" not in final_payload:
-            final_payload["task_type"] = ctx.task_type
-        if ctx.action_name is not None and "action_name" not in final_payload:
-            final_payload["action_name"] = ctx.action_name
-        if ctx.node_status is not None and "node_status" not in final_payload:
-            final_payload["node_status"] = ctx.node_status
-        if ctx.node_next_status is not None and "node_next_status" not in final_payload:
-            final_payload["node_next_status"] = ctx.node_next_status
+        # Define the fields to potentially add from context
+        context_fields = [
+            "step",
+            "node_id",
+            "task_type",
+            "action_name",
+            "node_status",
+            "node_next_status",
+            "task_goal",
+            "agent_class",
+        ]
+        for field_name in context_fields:
+            field_value = getattr(ctx, field_name, None)
+            if field_value is not None and field_name not in final_payload:
+                final_payload[field_name] = field_value
 
     return Event(event_type=event_type, payload=final_payload, run_id=_current_run_id)
 

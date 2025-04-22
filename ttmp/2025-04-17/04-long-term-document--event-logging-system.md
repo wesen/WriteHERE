@@ -53,7 +53,7 @@ The system emits 13 types of events, all defined in the `EventType` enum in `rec
 
 #### 1. `step_started`
 
-Emitted when the engine begins a new execution step. Generated in `recursive/engine.py:forward_one_step_not_parallel()`.
+Emitted when the engine begins a new execution step. Generated in `recursive/engine.py:forward_one_step_not_parallel()`. The `node_goal` is included in the explicit payload, but other context fields (`node_id`, `task_type`) might be added by the event bus if available.
 
 ```json
 {
@@ -61,6 +61,7 @@ Emitted when the engine begins a new execution step. Generated in `recursive/eng
   "payload": {
     "step": 42,
     "node_id": "node-uuid-string",
+    "task_type": "REASONING",
     "node_goal": "Analyze customer feedback data",
     "root_id": "root-node-uuid-string"
   }
@@ -71,7 +72,7 @@ Emitted when the engine begins a new execution step. Generated in `recursive/eng
 
 #### 2. `step_finished`
 
-Emitted when an execution step completes. Generated in `recursive/engine.py:forward_one_step_not_parallel()`.
+Emitted when an execution step completes. Generated in `recursive/engine.py:forward_one_step_not_parallel()`. Contextual fields (`node_id`, `task_type`, `task_goal`, etc.) are added by the event bus from the provided `ExecutionContext`.
 
 ```json
 {
@@ -81,7 +82,9 @@ Emitted when an execution step completes. Generated in `recursive/engine.py:forw
     "node_id": "node-uuid-string",
     "action_name": "analyze",
     "status_after": "PLANNING_POST_REFLECT",
-    "duration_seconds": 3.75
+    "duration_seconds": 3.75,
+    "task_type": "REASONING",
+    "task_goal": "Analyze customer feedback data"
   }
 }
 ```
@@ -90,7 +93,7 @@ Emitted when an execution step completes. Generated in `recursive/engine.py:forw
 
 #### 3. `node_status_changed`
 
-Emitted when a node's status transitions to a new state. The status values come from `recursive/common/enums.py:TaskStatus`. Includes the execution step number if context is available.
+Emitted when a node's status transitions to a new state. The status values come from `recursive/common/enums.py:TaskStatus`. Contextual fields (`step`, `node_id`, `task_type`, `task_goal`, etc.) are added by the event bus from the provided `ExecutionContext`.
 
 ```json
 {
@@ -100,7 +103,8 @@ Emitted when a node's status transitions to a new state. The status values come 
     "node_goal": "Generate conclusion paragraph",
     "old_status": "PLANNING",
     "new_status": "DOING",
-    "step": 42 // Optional: Present if context was provided
+    "step": 42,
+    "task_type": "COMPOSITION"
   }
 }
 ```
@@ -111,7 +115,7 @@ Emitted when a node's status transitions to a new state. The status values come 
 
 #### 4. `llm_call_started`
 
-Emitted when the agent initiates an LLM call. Includes the current execution step number if context is available. The agent class is the name of the agent class (e.g., `SimpleExecutor`, `FinalAggregateAgent`). The full prompt is included as a list of message objects.
+Emitted when the agent initiates an LLM call. The agent class is passed explicitly and also added to the context. Contextual fields (`step`, `node_id`, `task_type`, `task_goal`, `action_name`, etc.) are added by the event bus from the provided `ExecutionContext`.
 
 ```json
 {
@@ -127,8 +131,10 @@ Emitted when the agent initiates an LLM call. Includes the current execution ste
         "content": "Given the following information, generate a conclusion paragraph..."
       }
     ],
-    "step": 51, // Optional: Present if context was provided
-    "node_id": "node-uuid-string"
+    "step": 51,
+    "node_id": "node-uuid-string",
+    "task_type": "REASONING",
+    "action_name": "execute"
   }
 }
 ```
@@ -138,7 +144,7 @@ Emitted when the agent initiates an LLM call. Includes the current execution ste
 
 #### 5. `llm_call_completed`
 
-Emitted when an LLM call completes with results or errors. Includes the current execution step number if context is available, and the full response content.
+Emitted when an LLM call completes with results or errors. Contextual fields (`step`, `node_id`, `task_type`, `task_goal`, `action_name`, etc.) are added by the event bus from the provided `ExecutionContext`.
 
 ```json
 {
@@ -149,13 +155,15 @@ Emitted when an LLM call completes with results or errors. Includes the current 
     "duration_seconds": 2.34,
     "result_summary": "...",
     "response": "The analysis of customer feedback reveals three primary concerns: product usability, customer support responsiveness, and pricing clarity. Addressing these areas proactively can significantly enhance user satisfaction.",
-    "step": 51, // Optional: Present if context was provided
+    "step": 51,
     "token_usage": {
       "prompt_tokens": 1234,
       "completion_tokens": 567
     },
     "node_id": "node-uuid-string",
-    "error": null // Present only if there was an error
+    "error": null,
+    "task_type": "REASONING",
+    "action_name": "execute"
   }
 }
 ```
@@ -164,7 +172,7 @@ Emitted when an LLM call completes with results or errors. Includes the current 
 
 #### 6. `tool_invoked`
 
-Emitted when the agent invokes a tool. Tools are defined in the `recursive/executor/action/` directory.
+Emitted when the agent invokes a tool. Tools are defined in the `recursive/executor/action/` directory. Contextual fields (`step`, `node_id`, `task_type`, `task_goal`, `agent_class`, `action_name`, etc.) are added by the event bus from the provided `ExecutionContext` (assuming the caller agent added `agent_class` to the context).
 
 ```json
 {
@@ -173,7 +181,9 @@ Emitted when the agent invokes a tool. Tools are defined in the `recursive/execu
     "tool_name": "search",
     "api_name": "run",
     "args_summary": "{\"query\": \"recent advancements in reinforcement learning\", \"limit\": 5}",
-    "node_id": "node-uuid-string"
+    "node_id": "node-uuid-string",
+    "step": 52,
+    "agent_class": "SearchAgent"
   }
 }
 ```
@@ -183,7 +193,7 @@ Emitted when the agent invokes a tool. Tools are defined in the `recursive/execu
 
 #### 7. `tool_returned`
 
-Emitted when a tool execution completes. The state comes from `recursive/executor/schema.py:ActionStatusCode` enum.
+Emitted when a tool execution completes. The state comes from `recursive/executor/schema.py:ActionStatusCode` enum. Contextual fields (`step`, `node_id`, `task_type`, `task_goal`, `agent_class`, `action_name`, etc.) are added by the event bus from the provided `ExecutionContext`.
 
 ```json
 {
@@ -195,7 +205,9 @@ Emitted when a tool execution completes. The state comes from `recursive/executo
     "duration_seconds": 1.23,
     "result_summary": "[{\"title\": \"Recent Advances in RL\", \"url\": \"http://example.com/paper1\"}...]",
     "node_id": "node-uuid-string",
-    "error": null // Present only if there was an error
+    "error": null,
+    "step": 52,
+    "agent_class": "SearchAgent"
   }
 }
 ```
@@ -205,22 +217,22 @@ Emitted when a tool execution completes. The state comes from `recursive/executo
 
 #### 8. `node_created`
 
-Emitted when an `AbstractNode` is instantiated. Includes the execution step number if context is available.
+Emitted when an `AbstractNode` is instantiated. Includes the execution step number if context is available (e.g., if created during a planning step). The `node_id`, `task_type`, and `task_goal` are passed explicitly as they are fundamental properties of the node being created.
 
 ```json
 {
   "event_type": "node_created",
   "payload": {
-    "node_id": "uuid-string", // The node's hashkey
-    "node_nid": "1.2", // Human-readable ID
-    "node_type": "PLAN_NODE" | "EXECUTE_NODE",
-    "task_type": "COMPOSITION" | "REASONING" | "RETRIEVAL" | "GENERAL",
+    "node_id": "uuid-string",
+    "node_nid": "1.2",
+    "node_type": "PLAN_NODE",
+    "task_type": "COMPOSITION",
     "task_goal": "Goal description...",
     "layer": 2,
-    "outer_node_id": "uuid-string" | null, // Hashkey of the container node
-    "root_node_id": "uuid-string", // Hashkey of the root
-    "initial_parent_nids": ["1.1", "0.3"], // From raw plan, before resolution
-    "step": 42 // Optional: Present if context was provided
+    "outer_node_id": "uuid-string" | null,
+    "root_node_id": "uuid-string",
+    "initial_parent_nids": ["1.1", "0.3"],
+    "step": 42
   }
 }
 ```
@@ -229,15 +241,17 @@ Emitted when an `AbstractNode` is instantiated. Includes the execution step numb
 
 #### 9. `plan_received`
 
-Emitted when a node receives a raw plan (before graph building). Includes the execution step number if context is available.
+Emitted when a node receives a raw plan (before graph building). Contextual fields (`step`, `node_id`, `task_type`, `task_goal`, etc.) are added by the event bus from the provided `ExecutionContext`.
 
 ```json
 {
   "event_type": "plan_received",
   "payload": {
-    "node_id": "uuid-string", // Node receiving the plan
-    "raw_plan": [{"id": "1.1", "goal": "...", ...}], // Full raw plan (Note: might be large)
-    "step": 42 // Optional: Present if context was provided
+    "node_id": "uuid-string",
+    "raw_plan": [{"id": "1.1", "goal": "...", ...}],
+    "step": 42,
+    "task_type": "COMPOSITION",
+    "task_goal": "Write introduction"
   }
 }
 ```
@@ -246,16 +260,18 @@ Emitted when a node receives a raw plan (before graph building). Includes the ex
 
 #### 10. `node_added`
 
-Emitted when a node is added to a `Graph` instance (specifically, an `inner_graph`). Includes the execution step number if context is available.
+Emitted when a node is added to a `Graph` instance (specifically, an `inner_graph`). Contextual fields related to the _graph owner_ node (`step`, `node_id`, `task_type`, `task_goal`) are added by the event bus from the provided `ExecutionContext` passed during graph building.
 
 ```json
 {
   "event_type": "node_added",
   "payload": {
-    "graph_owner_node_id": "uuid-string", // Node whose inner_graph this is
-    "added_node_id": "uuid-string", // Hashkey of the node being added
+    "graph_owner_node_id": "uuid-string",
+    "added_node_id": "uuid-string",
     "added_node_nid": "1.3",
-    "step": 42 // Optional: Present if context was provided
+    "step": 42,
+    "task_type": "COMPOSITION",
+    "task_goal": "Write introduction"
   }
 }
 ```
@@ -264,18 +280,20 @@ Emitted when a node is added to a `Graph` instance (specifically, an `inner_grap
 
 #### 11. `edge_added`
 
-Emitted when an edge (dependency) is added between nodes in a `Graph` instance. Includes the execution step number if context is available.
+Emitted when an edge (dependency) is added between nodes in a `Graph` instance. Contextual fields related to the _graph owner_ node (`step`, `node_id`, `task_type`, `task_goal`) are added by the event bus from the provided `ExecutionContext` passed during graph building.
 
 ```json
 {
   "event_type": "edge_added",
   "payload": {
-    "graph_owner_node_id": "uuid-string", // Node whose inner_graph this is
-    "parent_node_id": "uuid-string", // Hashkey of the parent node
-    "child_node_id": "uuid-string", // Hashkey of the child node
+    "graph_owner_node_id": "uuid-string",
+    "parent_node_id": "uuid-string",
+    "child_node_id": "uuid-string",
     "parent_node_nid": "1.2",
     "child_node_nid": "1.3",
-    "step": 42 // Optional: Present if context was provided
+    "step": 42,
+    "task_type": "COMPOSITION",
+    "task_goal": "Write introduction"
   }
 }
 ```
@@ -284,17 +302,19 @@ Emitted when an edge (dependency) is added between nodes in a `Graph` instance. 
 
 #### 12. `inner_graph_built`
 
-Emitted when a node finishes constructing its `inner_graph` from a plan. Includes the execution step number if context is available.
+Emitted when a node finishes constructing its `inner_graph` from a plan. Contextual fields (`step`, `node_id`, `task_type`, `task_goal`, etc.) are added by the event bus from the provided `ExecutionContext`.
 
 ```json
 {
   "event_type": "inner_graph_built",
   "payload": {
-    "node_id": "uuid-string", // Node whose inner graph was built
+    "node_id": "uuid-string",
     "node_count": 5,
     "edge_count": 4,
-    "node_ids": ["uuid1", "uuid2", ...], // List of hashkeys in the graph
-    "step": 42 // Optional: Present if context was provided
+    "node_ids": ["uuid1", "uuid2", ...],
+    "step": 42,
+    "task_type": "COMPOSITION",
+    "task_goal": "Write introduction"
   }
 }
 ```
@@ -303,16 +323,18 @@ Emitted when a node finishes constructing its `inner_graph` from a plan. Include
 
 #### 13. `node_result_available`
 
-Emitted when a node computes its final result (typically via `do_action`). Includes the execution step number if context is available.
+Emitted when a node computes its final result (typically via `do_action`). Contextual fields (`step`, `node_id`, `task_type`, `task_goal`, `action_name`, etc.) are added by the event bus from the provided `ExecutionContext`.
 
 ```json
 {
   "event_type": "node_result_available",
   "payload": {
     "node_id": "uuid-string",
-    "action_name": "execute" | "final_aggregate" | "plan", // Action producing the result
+    "action_name": "execute",
     "result_summary": "Truncated result...",
-    "step": 42 // Optional: Present if context was provided
+    "step": 42,
+    "task_type": "REASONING",
+    "task_goal": "Analyze data"
   }
 }
 ```
@@ -329,17 +351,24 @@ The `EventBus` class in `recursive/utils/event_bus.py` is responsible for publis
 
 ## Instrumentation Points in Code
 
-Events are emitted from various key points in the agent's execution flow. To ensure contextual information like the execution `step` number is available when needed (e.g., for LLM call events), an `ExecutionContext` object (`recursive/common/context.py`) is used. This object acts as a carrier for data that needs to be passed down the call stack.
+Events are emitted from various key points in the agent's execution flow. To ensure contextual information like the execution `step` number, `node_id`, `task_type`, `task_goal`, and `agent_class` is available when needed, an `ExecutionContext` object (`recursive/common/context.py`) is used. This object acts as a carrier for data that needs to be passed down the call stack, using the immutable `with_` method to add context specific to certain scopes (like agent calls).
 
 ### Propagating ExecutionContext
 
-The `ExecutionContext` object, primarily containing the `step` number, is propagated down the call stack as follows:
+The `ExecutionContext` object is propagated down the call stack as follows:
 
-1.  **`GraphRunEngine.forward_one_step_not_parallel`**: Receives the `step` number as an argument. Creates an `ExecutionContext` instance (`ctx`) containing this step number.
-2.  **Subsequent Method Calls**: The `ctx` object is explicitly passed as an argument through intermediate methods like `AbstractNode.next_action_step`, `AbstractNode.do_action`, node-specific action methods (e.g., `plan`, `execute`), and agent `forward` methods.
-3.  **Event Emission**: When an `emit_*` function that accepts `ctx` is called (e.g., `emit_llm_call_started`, `emit_node_status_changed`), it checks if `ctx` and `ctx.step` are available. If so, the `step` number is included in the event's payload.
+1.  **`GraphRunEngine.forward_one_step_not_parallel`**: Receives the `step` number. Creates an initial `ExecutionContext` instance (`ctx`) containing `step`, `node_id`, `task_type`, and `task_goal` from the current node.
+2.  **`AbstractNode.next_action_step`**: Receives `ctx`. Creates `action_step_ctx = ctx.with_(action_name=..., node_status=..., node_next_status=...)`. Passes `action_step_ctx` to `do_action`.
+3.  **`AbstractNode.do_action`**: Receives `action_step_ctx`. Passes it down to the agent's `forward` method.
+4.  **Agent `forward` Methods (e.g., `SimpleExecutor.forward`)**: Receives `ctx`. Passes it down to helper methods or LLM/tool calls.
+5.  **`Agent.call_llm`**: Receives `ctx`. Creates `agent_ctx = ctx.with_(agent_class=self.__class__.__name__)`. Passes `agent_ctx` to the `emit_llm_call_started` and `emit_llm_call_completed` functions.
+6.  **Agent methods invoking tools (e.g., potentially `SearchAgent.chat`)**: Should receive `ctx`, create `agent_ctx = ctx.with_(agent_class=self.__class__.__name__)`, and pass `agent_ctx` to the `ActionExecutor` call.
+7.  **`ActionExecutor.__call__`**: Receives `ctx` (expected to contain `agent_class` from the calling agent). Passes `ctx` to `emit_tool_invoked` and `emit_tool_returned`.
+8.  **Other Node Methods (`plan2graph`, `do_exam`)**: Receive `ctx` and pass it down. May use `ctx.with_(...)` to add node-specific context (`node_id`, `task_type`) if needed for specific event emissions within those methods (like graph building events).
+9.  **Event Emission (`emit_*` functions)**: Receive `ctx`. Pass it to `_create_event`.
+10. **`_create_event`**: Receives `ctx`. If `ctx` is present, it iterates through known context fields (`step`, `node_id`, `task_type`, `task_goal`, `agent_class`, `action_name`, `node_status`, `node_next_status`) and adds any non-null value to the event payload _if that key is not already present in the payload_.
 
-This explicit passing ensures the `step` number (and potentially other future context attributes) is available deep within the agent logic for event emission without relying on global state.
+This explicit passing and enrichment ensures that relevant context attributes are available deep within the agent logic for event emission without relying on global state.
 
 ### Event Emission Table
 

@@ -236,6 +236,7 @@ class GraphRunEngine:
             step=step,
             node_id=need_next_step_node.hashkey,
             task_type=need_next_step_node.task_type_tag,  # Add task_type here
+            task_goal=need_next_step_node.task_info.get("goal"),  # Add task_goal here
         )
 
         # Execute the next step for this node

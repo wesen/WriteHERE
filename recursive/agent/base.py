@@ -77,17 +77,22 @@ class Agent(ABC):
             "other_args": other_inner_args,
         }
 
+        # Create context with agent_class
+        agent_ctx = (
+            ctx.with_(agent_class=agent_name)
+            if ctx
+            else ExecutionContext(agent_class=agent_name)
+        )
+
         # --- Emit LLMCallStarted ---
         # Use a truncated prompt or a hash for the event payload
         # prompt_hash = hashlib.sha256(prompt.encode()).hexdigest()[:16]
         emit_llm_call_started(
-            agent_class=agent_name,
+            agent_class=agent_name,  # Keep explicit agent_class for direct access if needed
             model=model,
             prompt_messages=message,  # Pass full message list
             prompt_preview=prompt[:200] + "...",
-            # step=step,  # Pass step from context - Replaced by ctx
-            ctx=ctx,  # Pass the whole context object
-            # node_id=node_id, # node_id is now passed via ctx
+            ctx=agent_ctx,  # Pass the enhanced context object
         )
 
         error_msg = None
@@ -131,14 +136,12 @@ class Agent(ABC):
 
         # --- Emit LLMCallCompleted ---
         emit_llm_call_completed(
-            agent_class=agent_name,
+            agent_class=agent_name,  # Keep explicit agent_class for direct access if needed
             model=model,
             duration=llm_call_duration,
             response_content=content,  # Pass full content
             error=error_msg,
-            # step=step,  # Pass step from context - Replaced by ctx
-            ctx=ctx,  # Pass the whole context object
-            # node_id=node_id, # node_id is now passed via ctx
+            ctx=agent_ctx,  # Pass the enhanced context object
             token_usage=token_usage,
         )
 
