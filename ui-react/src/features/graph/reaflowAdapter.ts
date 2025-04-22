@@ -6,7 +6,7 @@ import { Node as GraphNode, Edge as GraphEdge } from "./graphSlice";
 const NODE_W = 260;
 const NODE_H = 164;
 
-import { RootState } from "../../app/store";
+import { RootState } from "../../store";
 
 const selectGraphNodes = (state: RootState) => selectAllNodes(state);
 const selectGraphEdges = (state: RootState) => selectAllEdges(state);

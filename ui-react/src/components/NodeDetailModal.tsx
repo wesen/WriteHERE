@@ -3,8 +3,20 @@ import { Modal, Spinner, Card, Row, Col, Badge, ListGroup, Placeholder } from 'r
 import { useSelector } from 'react-redux';
 import { selectNodeById } from '../features/graph/selectors';
 import { useGetEventsQuery, AgentEvent } from '../features/events/eventsApi';
-import { RootState } from '../app/store';
+import { RootState } from '../store';
 import NodeEventDetailPane from './NodeEventDetailPane';
+
+// Event type to badge variant mapping
+const eventTypeBadgeVariant: Record<string, string> = {
+  step_started: 'primary',
+  step_finished: 'success',
+  node_status_changed: 'info',
+  llm_call_started: 'warning',
+  llm_call_completed: 'warning',
+  tool_invoked: 'secondary',
+  tool_returned: 'secondary',
+  default: 'light'
+};
 
 interface NodeDetailModalProps {
   show: boolean;
@@ -47,6 +59,7 @@ const NodeDetailModal: React.FC<NodeDetailModalProps> = ({ show, onHide, nodeId 
         day: 'numeric',
       });
     } catch (e) {
+      console.error(`[NodeDetailModal] Error formatting timestamp: ${e}`);
       return isoString;
     }
   };
@@ -93,7 +106,7 @@ const NodeDetailModal: React.FC<NodeDetailModalProps> = ({ show, onHide, nodeId 
                   <p><strong>Layer:</strong> {node.layer}</p>
                   <p>
                     <strong>Status:</strong> 
-                    <Badge bg={statusColorMap[node.status] || 'light'} className="ms-2">
+                    <Badge bg={statusColorMap[node.status || 'N/A'] || 'light'} className="ms-2">
                       {node.status}
                     </Badge>
                   </p>
@@ -121,10 +134,10 @@ const NodeDetailModal: React.FC<NodeDetailModalProps> = ({ show, onHide, nodeId 
             ) : (
               nodeEvents.map(event => (
                 <ListGroup.Item
-                  key={event.id}
+                  key={event.event_id}
                   action
                   onClick={() => setSelectedEvent(event)}
-                  active={selectedEvent?.id === event.id}
+                  active={selectedEvent?.event_id === event.event_id}
                   className="d-flex justify-content-between align-items-center"
                 >
                   <div>

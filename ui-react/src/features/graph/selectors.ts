@@ -1,5 +1,5 @@
 import { createSelector } from "@reduxjs/toolkit";
-import { RootState } from "../../app/store";
+import { RootState } from "../../store";
 import { nodeAdapter, edgeAdapter } from "./graphSlice"; // Import adapters
 
 // Basic entity adapter selectors

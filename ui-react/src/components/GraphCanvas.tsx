@@ -4,10 +4,10 @@ import { useSelector } from 'react-redux';
 import { selectReaflowGraph } from '../features/graph/reaflowAdapter';
 import { CustomNode } from './reaflow/CustomNode';
 import './reaflow/ReaflowCanvas.css';
-import { RootState } from '../app/store';
+import { RootState } from '../store';
 import Spinner from 'react-bootstrap/Spinner';
 import Alert from 'react-bootstrap/Alert';
-import NodeDetailModal from './NodeDetailModal';
+import NodeDetailModal from './NodeDetailModal.tsx';
 
 const layout: ElkCanvasLayoutOptions = {
   'elk.algorithm': 'layered',
@@ -15,8 +15,6 @@ const layout: ElkCanvasLayoutOptions = {
   'elk.spacing.nodeNode': '100',
   'elk.layered.spacing.nodeNodeBetweenLayers': '100',
 };
-
-const noSelectStyle = { userSelect: 'none' };
 
 export const GraphCanvas: React.FC = () => {
   const { nodes, edges } = useSelector(selectReaflowGraph);

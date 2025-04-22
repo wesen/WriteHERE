@@ -46,7 +46,7 @@ The Recursive Agent Event Logging System provides real-time visibility into agen
   - `ui-react/src/components/NodeEventDetailPane.tsx`: **(New)** (Relevant because: it displays the details of a single selected event). Renders the details of a selected `AgentEvent`, adapting logic from `EventDetailModal`.
 
 - **Store**
-  - `ui-react/src/app/store.ts`: (Relevant because: it shows how the Redux store is configured and defines the `RootState` type needed for selectors). Combines reducers and exports `RootState` type for selectors. **Note:** Linter showed path issue, ensure it's correct (`../app/store` vs `ui-react/src/store.ts`).
+  - `ui-react/src/store.ts`: (Relevant because: it shows how the Redux store is configured and defines the `RootState` type needed for selectors). Combines reducers and exports `RootState` type for selectors. **Note:** Linter showed path issue, ensure it's correct (`../store` vs `ui-react/src/store.ts`).
 
 ---
 
@@ -149,7 +149,7 @@ Follow these general steps. Focus on getting each part working before moving to 
 ## 8. Next Steps for Developers
 
 - [x] Implement the steps outlined in Section 6.
-- [ ] Fix remaining linter errors (e.g., import paths like `../app/store`, unused variables).
+- [ ] Fix remaining linter errors (e.g., import paths like `../store`, unused variables).
 - [ ] Test the modal functionality thoroughly with various event types and node scenarios.
 - [ ] Style the modal for clarity and usability (e.g., improve layout, potentially add tabs for metadata/events/details if needed).
 - [ ] (Optional Refactor): Consider moving the event filtering logic into a memoized Redux selector if performance becomes a concern.

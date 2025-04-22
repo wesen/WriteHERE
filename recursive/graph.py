@@ -99,11 +99,11 @@ class Graph:
                     raise Exception("Error, some node is not reachable")
         elif mode == "dfs":
             raise Exception(
-                "Error! the topological_sort mode () is invalid".format(mode)
+                "Error! the topological_sort mode ({}) is invalid".format(mode)
             )
         else:
             raise Exception(
-                "Error! the topological_sort mode () is invalid".format(mode)
+                "Error! the topological_sort mode ({}) is invalid".format(mode)
             )
         self.topological_task_queue = queue
         return queue
