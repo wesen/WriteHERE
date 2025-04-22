@@ -90,7 +90,7 @@ Emitted when an execution step completes. Generated in `recursive/engine.py:forw
 
 #### 3. `node_status_changed`
 
-Emitted when a node's status transitions to a new state. The status values come from `recursive/common/enums.py:TaskStatus`.
+Emitted when a node's status transitions to a new state. The status values come from `recursive/common/enums.py:TaskStatus`. Includes the execution step number if context is available.
 
 ```json
 {
@@ -99,7 +99,8 @@ Emitted when a node's status transitions to a new state. The status values come 
     "node_id": "node-uuid-string",
     "node_goal": "Generate conclusion paragraph",
     "old_status": "PLANNING",
-    "new_status": "DOING"
+    "new_status": "DOING",
+    "step": 42 // Optional: Present if context was provided
   }
 }
 ```
@@ -110,7 +111,7 @@ Emitted when a node's status transitions to a new state. The status values come 
 
 #### 4. `llm_call_started`
 
-Emitted when the agent initiates an LLM call. Includes the current execution step number. The agent class is the name of the agent class (e.g., `SimpleExecutor`, `FinalAggregateAgent`). The full prompt is included as a list of message objects.
+Emitted when the agent initiates an LLM call. Includes the current execution step number if context is available. The agent class is the name of the agent class (e.g., `SimpleExecutor`, `FinalAggregateAgent`). The full prompt is included as a list of message objects.
 
 ```json
 {
@@ -126,7 +127,7 @@ Emitted when the agent initiates an LLM call. Includes the current execution ste
         "content": "Given the following information, generate a conclusion paragraph..."
       }
     ],
-    "step": 51,
+    "step": 51, // Optional: Present if context was provided
     "node_id": "node-uuid-string"
   }
 }
@@ -137,7 +138,7 @@ Emitted when the agent initiates an LLM call. Includes the current execution ste
 
 #### 5. `llm_call_completed`
 
-Emitted when an LLM call completes with results or errors. Includes the current execution step number and the full response content.
+Emitted when an LLM call completes with results or errors. Includes the current execution step number if context is available, and the full response content.
 
 ```json
 {
@@ -148,7 +149,7 @@ Emitted when an LLM call completes with results or errors. Includes the current 
     "duration_seconds": 2.34,
     "result_summary": "...",
     "response": "The analysis of customer feedback reveals three primary concerns: product usability, customer support responsiveness, and pricing clarity. Addressing these areas proactively can significantly enhance user satisfaction.",
-    "step": 51,
+    "step": 51, // Optional: Present if context was provided
     "token_usage": {
       "prompt_tokens": 1234,
       "completion_tokens": 567
@@ -204,7 +205,7 @@ Emitted when a tool execution completes. The state comes from `recursive/executo
 
 #### 8. `node_created`
 
-Emitted when an `AbstractNode` is instantiated.
+Emitted when an `AbstractNode` is instantiated. Includes the execution step number if context is available.
 
 ```json
 {
@@ -219,7 +220,7 @@ Emitted when an `AbstractNode` is instantiated.
     "outer_node_id": "uuid-string" | null, // Hashkey of the container node
     "root_node_id": "uuid-string", // Hashkey of the root
     "initial_parent_nids": ["1.1", "0.3"], // From raw plan, before resolution
-    "step": 42 // Optional: If created during a step
+    "step": 42 // Optional: Present if context was provided
   }
 }
 ```
@@ -228,7 +229,7 @@ Emitted when an `AbstractNode` is instantiated.
 
 #### 9. `plan_received`
 
-Emitted when a node receives a raw plan (before graph building).
+Emitted when a node receives a raw plan (before graph building). Includes the execution step number if context is available.
 
 ```json
 {
@@ -236,7 +237,7 @@ Emitted when a node receives a raw plan (before graph building).
   "payload": {
     "node_id": "uuid-string", // Node receiving the plan
     "raw_plan": [{"id": "1.1", "goal": "...", ...}], // Full raw plan (Note: might be large)
-    "step": 42 // Optional: If plan received during a step
+    "step": 42 // Optional: Present if context was provided
   }
 }
 ```
@@ -245,7 +246,7 @@ Emitted when a node receives a raw plan (before graph building).
 
 #### 10. `node_added`
 
-Emitted when a node is added to a `Graph` instance (specifically, an `inner_graph`).
+Emitted when a node is added to a `Graph` instance (specifically, an `inner_graph`). Includes the execution step number if context is available.
 
 ```json
 {
@@ -254,7 +255,7 @@ Emitted when a node is added to a `Graph` instance (specifically, an `inner_grap
     "graph_owner_node_id": "uuid-string", // Node whose inner_graph this is
     "added_node_id": "uuid-string", // Hashkey of the node being added
     "added_node_nid": "1.3",
-    "step": 42 // Optional: If added during a step
+    "step": 42 // Optional: Present if context was provided
   }
 }
 ```
@@ -263,7 +264,7 @@ Emitted when a node is added to a `Graph` instance (specifically, an `inner_grap
 
 #### 11. `edge_added`
 
-Emitted when an edge (dependency) is added between nodes in a `Graph` instance.
+Emitted when an edge (dependency) is added between nodes in a `Graph` instance. Includes the execution step number if context is available.
 
 ```json
 {
@@ -274,7 +275,7 @@ Emitted when an edge (dependency) is added between nodes in a `Graph` instance.
     "child_node_id": "uuid-string", // Hashkey of the child node
     "parent_node_nid": "1.2",
     "child_node_nid": "1.3",
-    "step": 42 // Optional: If added during a step
+    "step": 42 // Optional: Present if context was provided
   }
 }
 ```
@@ -283,7 +284,7 @@ Emitted when an edge (dependency) is added between nodes in a `Graph` instance.
 
 #### 12. `inner_graph_built`
 
-Emitted when a node finishes constructing its `inner_graph` from a plan.
+Emitted when a node finishes constructing its `inner_graph` from a plan. Includes the execution step number if context is available.
 
 ```json
 {
@@ -293,7 +294,7 @@ Emitted when a node finishes constructing its `inner_graph` from a plan.
     "node_count": 5,
     "edge_count": 4,
     "node_ids": ["uuid1", "uuid2", ...], // List of hashkeys in the graph
-    "step": 42 // Optional: If built during a step
+    "step": 42 // Optional: Present if context was provided
   }
 }
 ```
@@ -302,7 +303,7 @@ Emitted when a node finishes constructing its `inner_graph` from a plan.
 
 #### 13. `node_result_available`
 
-Emitted when a node computes its final result (typically via `do_action`).
+Emitted when a node computes its final result (typically via `do_action`). Includes the execution step number if context is available.
 
 ```json
 {
@@ -311,7 +312,7 @@ Emitted when a node computes its final result (typically via `do_action`).
     "node_id": "uuid-string",
     "action_name": "execute" | "final_aggregate" | "plan", // Action producing the result
     "result_summary": "Truncated result...",
-    "step": 42 // Optional: If result generated during a step
+    "step": 42 // Optional: Present if context was provided
   }
 }
 ```
@@ -328,21 +329,17 @@ The `EventBus` class in `recursive/utils/event_bus.py` is responsible for publis
 
 ## Instrumentation Points in Code
 
-Events are emitted from various key points in the agent's execution flow. To ensure contextual information like the execution `step` number is available when needed (e.g., for LLM call events), an `ExecutionContext` object (`recursive/common/context.py`) is used.
+Events are emitted from various key points in the agent's execution flow. To ensure contextual information like the execution `step` number is available when needed (e.g., for LLM call events), an `ExecutionContext` object (`recursive/common/context.py`) is used. This object acts as a carrier for data that needs to be passed down the call stack.
 
 ### Propagating ExecutionContext
 
-The context, primarily containing the `step` number, is propagated down the call stack as follows:
+The `ExecutionContext` object, primarily containing the `step` number, is propagated down the call stack as follows:
 
 1.  **`GraphRunEngine.forward_one_step_not_parallel`**: Receives the `step` number as an argument. Creates an `ExecutionContext` instance (`ctx`) containing this step number.
-2.  **Call to `AbstractNode.next_action_step`**: The engine passes the `ctx` object to the `next_action_step` method of the selected node.
-3.  **`AbstractNode.next_action_step`**: This method accepts the `ctx` object. It determines the correct action (e.g., "plan", "execute") and calls `self.do_action`, passing the `ctx` along.
-4.  **`AbstractNode.do_action`**: This method accepts the `ctx` object. It retrieves the appropriate agent using `AgentProxy` and then calls the specific action method implemented _on the node subclass_ (e.g., `RegularDummyNode.plan`), passing the `agent`, `memory`, and `ctx`.
-5.  **Node Subclass Action Method (e.g., `RegularDummyNode.plan`)**: This method accepts the `ctx` object. It then calls the corresponding agent's `forward` method, passing `self` (the node), `memory`, and the `ctx` object.
-6.  **Agent `forward` Method (e.g., `SimpleExecutor.forward`)**: Accepts the `ctx` object. If this agent needs to make an LLM call, it passes the `ctx` object to helper functions like `get_llm_output` or directly to `self.call_llm`.
-7.  **`Agent.call_llm`**: Accepts the `ctx` object. It extracts the `step` number from `ctx` and passes it to `emit_llm_call_started` and `emit_llm_call_completed`.
+2.  **Subsequent Method Calls**: The `ctx` object is explicitly passed as an argument through intermediate methods like `AbstractNode.next_action_step`, `AbstractNode.do_action`, node-specific action methods (e.g., `plan`, `execute`), and agent `forward` methods.
+3.  **Event Emission**: When an `emit_*` function that accepts `ctx` is called (e.g., `emit_llm_call_started`, `emit_node_status_changed`), it checks if `ctx` and `ctx.step` are available. If so, the `step` number is included in the event's payload.
 
-This explicit passing ensures the `step` number is available deep within the agent logic for event emission without relying on global state.
+This explicit passing ensures the `step` number (and potentially other future context attributes) is available deep within the agent logic for event emission without relying on global state.
 
 ### Event Emission Table
 

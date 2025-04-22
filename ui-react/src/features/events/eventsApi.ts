@@ -98,6 +98,7 @@ export interface NodeCreatedPayload {
 
 export interface PlanReceivedPayload {
   node_id: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   raw_plan: any[]; // Using any[] since plan structure can vary
   step?: number | null;
 }
