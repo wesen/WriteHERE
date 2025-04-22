@@ -16,6 +16,7 @@
 - [x] add run started event
 - [ ] Add lllm call id to link completed to started + tool calls to parent
 - [ ] pass execution context to tool_calls
+- [ ] What is Layer number?
 
 ## UI stuff
 
