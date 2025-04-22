@@ -231,12 +231,19 @@ class GraphRunEngine:
             ctx=None,  # Initial step start doesn't have prior context
         )
 
+        # Get parent node IDs (hashkeys)
+        parent_nodes = need_next_step_node.node_graph_info.get("parent_nodes", [])
+        parent_node_ids = [
+            p.hashkey for p in parent_nodes if p
+        ]  # Ensure parent object exists
+
         # Create ExecutionContext with initial step and node info
         ctx = ExecutionContext(
             step=step,
             node_id=need_next_step_node.hashkey,
             task_type=need_next_step_node.task_type_tag,  # Add task_type here
             task_goal=need_next_step_node.task_info.get("goal"),  # Add task_goal here
+            parent_node_ids=parent_node_ids,  # Add parent node IDs here
         )
 
         # Execute the next step for this node

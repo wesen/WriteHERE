@@ -22,6 +22,7 @@ class ExecutionContext:
     node_next_status: Optional[str] = None
     task_goal: Optional[str] = None
     agent_class: Optional[str] = None
+    parent_node_ids: Optional[List[str]] = None
     # Add other fields as needed, e.g., run_id
 
     def with_(self: T, **kwargs: Any) -> T:

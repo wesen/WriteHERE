@@ -25,3 +25,21 @@ class TaskStatus(Enum):
 class NodeType(Enum):
     PLAN_NODE = 1
     EXECUTE_NODE = 2
+
+
+# TODO: Consolidate with EventType in event_bus.py
+class EventType(str, Enum):
+    STEP_STARTED = "step_started"
+    STEP_FINISHED = "step_finished"
+    NODE_STATUS_CHANGED = "node_status_changed"
+    LLM_CALL_STARTED = "llm_call_started"
+    LLM_CALL_COMPLETED = "llm_call_completed"
+    TOOL_INVOKED = "tool_invoked"
+    TOOL_RETURNED = "tool_returned"
+    NODE_CREATED = "node_created"
+    PLAN_RECEIVED = "plan_received"
+    NODE_ADDED = "node_added"
+    EDGE_ADDED = "edge_added"
+    INNER_GRAPH_BUILT = "inner_graph_built"
+    NODE_RESULT_AVAILABLE = "node_result_available"
+    RUN_STARTED = "run_started"

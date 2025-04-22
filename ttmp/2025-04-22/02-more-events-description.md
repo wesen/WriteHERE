@@ -11,7 +11,7 @@ This document describes additional events to enhance visibility into the agent's
 
 ## 1. Run Lifecycle Events
 
-### 1.1 `run_started`
+### 1.1 `run_started` (Implemented)
 
 **Purpose**: Signals the start of a new agent run with initial configuration.
 
@@ -21,26 +21,30 @@ This document describes additional events to enhance visibility into the agent's
 {
   "event_type": "run_started",
   "payload": {
-    "input_data": "...",
-    "config": {
-      "model": "gpt-4",
-      "max_steps": 100,
-      "max_nodes": 50,
-      "tool_configs": {...}
+    "input_data": "...", // e.g., input filename
+    "config": { // Simplified config based on args
+      "model": "...",
+      "engine_backend": "...",
+      "start": null | int,
+      "end": null | int,
+      "today_date": "..."
     },
-    "run_mode": "report|chat|...",
-    "timestamp_utc": "..."
-  }
+    "run_mode": "report|story|...",
+    "timestamp_utc": "..." // ISO 8601 format
+  },
+  "run_id": "agent-run-uuid" // Added implicitly by event bus
 }
 ```
 
 **Implementation Points**:
 
-- **Emission**: In `recursive/main.py`, right after argument parsing and before creating the engine
+- **Emission**: In `recursive/main.py`, after parsing `args` and generating/setting the `current_run_id`.
 - **Data Sources**:
-  - `args` from argparse for configuration
-  - Input data from the input file or chat input
-  - Current UTC timestamp
+  - `input_data`: `args.filename`
+  - `config`: Dictionary constructed from `args.model`, `args.engine_backend`, `args.start`, `args.end`, `args.today_date`.
+  - `run_mode`: `args.mode`
+  - `timestamp_utc`: `datetime.now(timezone.utc)`
+  - `run_id`: `current_run_id` (passed explicitly to emitter, added to event by `_create_event`)
 
 ### 1.2 `run_finished`
 
@@ -430,28 +434,3 @@ This document describes additional events to enhance visibility into the agent's
 
    - Add event emission calls at identified points
    - Ensure all required data is available
-   - Add timing/measurement code where needed
-
-4. **Update Visualization**:
-   - Extend UI to handle new event types
-   - Create specialized visualizations for planning/execution flow
-   - Add debugging views for LLM interactions
-
-## Benefits
-
-These additional events will provide:
-
-1. Complete visibility into the planning process
-2. Detailed insights into LLM interactions
-3. Better debugging capabilities
-4. Performance optimization opportunities
-5. Enhanced monitoring of resource usage
-
-## Next Steps
-
-1. Implement run lifecycle events (highest priority)
-2. Add LLM interaction events
-3. Implement graph planning events
-4. Add node execution flow events
-5. Implement context snapshot events
-6. Update visualization components

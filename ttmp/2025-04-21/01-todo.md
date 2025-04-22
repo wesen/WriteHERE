@@ -2,12 +2,19 @@
 
 - [ ] Some nodes don't seem to have parents
 - [ ] What about N/A status of new nodes?
+- [ ] Add run_id to the run started event
+
+## TODO menial
+
+- [x] pass execution context to emit_llm_call_started/completed
+- [ ] Batch node creation and edge creation
 
 ## Ideas for events
 
 - [ ] add events when nodes are computed / scheduled / created in engine.py (forward_one_step_not_parallel)
-- [ ] add run started event
+- [x] add run started event
 - [ ] Add lllm call id to link completed to started + tool calls to parent
+- [ ] pass execution context to tool_calls
 
 ## UI stuff
 
@@ -30,8 +37,3 @@
 ## Future
 
 - [ ] Restart nodes and tasks
-
-## TODO menial
-
-- [x] pass execution context to emit_llm_call_started/completed
-- [ ] pass execution context to tool_calls

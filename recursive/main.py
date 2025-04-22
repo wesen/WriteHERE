@@ -1,5 +1,5 @@
 import argparse
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid  # For run ID
 
 from recursive.report_writing import report_writing
@@ -54,6 +54,7 @@ if __name__ == "__main__":
     ws_thread = None
     if not args.no_ws_server:
         from recursive.utils.ws_server import start_ws_thread
+
         ws_thread = start_ws_thread()
         print("WebSocket server thread started, UI available at http://localhost:9999")
     else:

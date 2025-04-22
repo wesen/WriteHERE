@@ -49,9 +49,63 @@ All events follow a common base schema (`Event` class in `recursive/utils/event_
 
 ### Event Types and Payloads
 
-The system emits 13 types of events, all defined in the `EventType` enum in `recursive/utils/event_bus.py`:
+The system emits 14 types of events, all defined in the `EventType` enum in `recursive/utils/event_bus.py`:
 
-#### 1. `step_started`
+#### 1. `run_started` (Implemented)
+
+Emitted once at the beginning of an agent run.
+
+**Emission Point**: In `story_writing()` and `report_writing()` functions, after reading input data.
+
+**Payload**:
+
+```json
+{
+  "input_data": {
+    "filename": "path/to/input.jsonl",
+    "data": [
+      // Array of input items from JSONL file
+      { "id": "task-1", "prompt": "..." },
+      { "id": "task-2", "prompt": "..." }
+    ]
+  },
+  "config": {
+    "model": "gpt-4o",
+    "engine_backend": "google",
+    "start": 0,
+    "end": 50,
+    "today_date": "Apr 22, 2025",
+    "planning_config": {
+      "language": "en",
+      "task_types": ["COMPOSITION", "REASONING", "RETRIEVAL"],
+      "agents": {
+        "plan": "UpdateAtomPlanningAgent",
+        "execute": "SimpleExecutor"
+      },
+      "composition_settings": {
+        "prompt_versions": {
+          "execute": "ReportWriter",
+          "atom": {
+            "without_update": "ReportAtom",
+            "with_update": "ReportAtomWithUpdate"
+          }
+        }
+      },
+      "retrieval_settings": {
+        "search_config": {
+          "backend": "google",
+          "region": "US",
+          "max_turn": 4
+        }
+      }
+    }
+  },
+  "run_mode": "report",
+  "timestamp_utc": "2025-04-22T10:00:00.000Z"
+}
+```
+
+#### 2. `step_started`
 
 Emitted when the engine begins a new execution step. Generated in `recursive/engine.py:forward_one_step_not_parallel()`. The `node_goal` is included in the explicit payload, but other context fields (`node_id`, `task_type`) might be added by the event bus if available.
 
@@ -70,7 +124,7 @@ Emitted when the engine begins a new execution step. Generated in `recursive/eng
 
 **Emission point**: `emit_step_started()` in file `recursive/engine.py` around line ~215
 
-#### 2. `step_finished`
+#### 3. `step_finished`
 
 Emitted when an execution step completes. Generated in `recursive/engine.py:forward_one_step_not_parallel()`. Contextual fields (`node_id`, `task_type`, `task_goal`, etc.) are added by the event bus from the provided `ExecutionContext`.
 
@@ -91,7 +145,7 @@ Emitted when an execution step completes. Generated in `recursive/engine.py:forw
 
 **Emission point**: `emit_step_finished()` in file `recursive/engine.py` around line ~240
 
-#### 3. `node_status_changed`
+#### 4. `node_status_changed`
 
 Emitted when a node's status transitions to a new state. The status values come from `recursive/common/enums.py:TaskStatus`. Contextual fields (`step`, `node_id`, `task_type`, `task_goal`, etc.) are added by the event bus from the provided `ExecutionContext`.
 
@@ -113,7 +167,7 @@ Emitted when a node's status transitions to a new state. The status values come 
 
 **Status values**: Defined in `recursive/common/enums.py` as `TaskStatus` enum (e.g., `NOT_READY`, `READY`, `PLANNING`, `PLANNING_POST_REFLECT`, `DOING`, `FINISH`)
 
-#### 4. `llm_call_started`
+#### 5. `llm_call_started`
 
 Emitted when the agent initiates an LLM call. The agent class is passed explicitly and also added to the context. Contextual fields (`step`, `node_id`, `task_type`, `task_goal`, `action_name`, etc.) are added by the event bus from the provided `ExecutionContext`.
 
@@ -142,7 +196,7 @@ Emitted when the agent initiates an LLM call. The agent class is passed explicit
 **Emission point**: `emit_llm_call_started()` in file `recursive/agent/base.py` in the `call_llm()` method
 **Agent classes**: Found in `recursive/agent/` directory (e.g., `simple_executor.py`, `final_aggregate.py`)
 
-#### 5. `llm_call_completed`
+#### 6. `llm_call_completed`
 
 Emitted when an LLM call completes with results or errors. Contextual fields (`step`, `node_id`, `task_type`, `task_goal`, `action_name`, etc.) are added by the event bus from the provided `ExecutionContext`.
 
@@ -170,7 +224,7 @@ Emitted when an LLM call completes with results or errors. Contextual fields (`s
 
 **Emission point**: `emit_llm_call_completed()` in file `recursive/agent/base.py` in the `call_llm()` method
 
-#### 6. `tool_invoked`
+#### 7. `tool_invoked`
 
 Emitted when the agent invokes a tool. Tools are defined in the `recursive/executor/action/` directory. Contextual fields (`step`, `node_id`, `task_type`, `task_goal`, `agent_class`, `action_name`, etc.) are added by the event bus from the provided `ExecutionContext` (assuming the caller agent added `agent_class` to the context).
 
@@ -191,7 +245,7 @@ Emitted when the agent invokes a tool. Tools are defined in the `recursive/execu
 **Emission point**: `emit_tool_invoked()` in file `recursive/executor/action/action_executor.py` in the `__call__()` method
 **Tool definitions**: Found in `recursive/executor/action/` directory
 
-#### 7. `tool_returned`
+#### 8. `tool_returned`
 
 Emitted when a tool execution completes. The state comes from `recursive/executor/schema.py:ActionStatusCode` enum. Contextual fields (`step`, `node_id`, `task_type`, `task_goal`, `agent_class`, `action_name`, etc.) are added by the event bus from the provided `ExecutionContext`.
 
@@ -215,7 +269,7 @@ Emitted when a tool execution completes. The state comes from `recursive/executo
 **Emission point**: `emit_tool_returned()` in file `recursive/executor/action/action_executor.py` in the `__call__()` method
 **Status values**: Defined in `recursive/executor/schema.py` as `ActionStatusCode` enum (e.g., `SUCCESS`, `ING`, `HTTP_ERROR`, `ARGS_ERROR`, `API_ERROR`)
 
-#### 8. `node_created`
+#### 9. `node_created`
 
 Emitted when an `AbstractNode` is instantiated. Includes the execution step number if context is available (e.g., if created during a planning step). The `node_id`, `task_type`, and `task_goal` are passed explicitly as they are fundamental properties of the node being created.
 
@@ -340,6 +394,89 @@ Emitted when a node computes its final result (typically via `do_action`). Conte
 ```
 
 **Emission point**: `emit_node_result_available()` in file `recursive/node/abstract.py` at the end of `do_action()` method (after result is stored).
+
+#### 1.2 `run_finished` (Implemented)
+
+**Purpose**: Signals successful completion of an agent run with summary statistics.
+
+**Emission Point**: At the end of `story_writing()` and `report_writing()` functions, after all items are processed.
+
+**Payload**:
+
+```json
+{
+  "event_type": "run_finished",
+  "payload": {
+    "total_steps": 42,
+    "duration_seconds": 123.45,
+    "total_nodes": 15,
+    "total_llm_calls": 30,
+    "total_tool_calls": 10,
+    "token_usage_summary": {
+      "total_prompt_tokens": 5000,
+      "total_completion_tokens": 2000
+    },
+    "node_statistics": {
+      "total_created": 15,
+      "total_completed": 15,
+      "by_type": {
+        "PLAN_NODE": 5,
+        "EXECUTE_NODE": 10
+      }
+    },
+    "search_statistics": {
+      // Optional, only in report mode
+      "total_searches": 25,
+      "total_pages_processed": 100,
+      "total_search_tokens": 15000
+    }
+  }
+}
+```
+
+**Data Sources**:
+
+- Step count from engine
+- Duration from start/end timestamps
+- Node counts from root node's graph
+- LLM/tool call counts from statistics tracking
+- Token usage accumulated during execution
+- Search statistics (report mode only) from search operations
+
+#### 1.3 `run_error` (Implemented)
+
+**Purpose**: Signals an unrecoverable error during run execution.
+
+**Emission Point**: Top-level try/catch blocks in `story_writing()` and `report_writing()` functions.
+
+**Payload**:
+
+```json
+{
+  "event_type": "run_error",
+  "payload": {
+    "error_type": "LLMError|ToolError|GraphError",
+    "error_message": "...",
+    "stack_trace": "...",
+    "node_id": "uuid", // Optional
+    "step": 42, // Optional
+    "context": {
+      "last_successful_step": 41,
+      "total_processed_items": 5,
+      "last_item_id": "task-123",
+      "engine_backend": "google" // Only in report mode
+    }
+  }
+}
+```
+
+**Implementation Details**:
+
+- Captures unhandled exceptions that would terminate the run
+- Includes context about progress made before error
+- Preserves full stack trace for debugging
+- Adds mode-specific context (e.g., engine_backend for report mode)
+- Optional node_id and step fields for errors during node execution
 
 ## Event Bus Implementation
 
@@ -543,22 +680,3 @@ For faster development with hot-reloading, you can run the Vite development serv
    ```bash
    npm run dev
    ```
-   This will typically start the UI on `http://localhost:5173` (check terminal output for the exact port).
-3. **Run the Python WebSocket server:** Start `server-main.py` separately.
-4. **Access the UI:** Open the URL provided by the Vite dev server (e.g., `http://localhost:5173`). The React app running on the dev server will still connect to the WebSocket endpoint (`ws://localhost:9999/ws/events`) provided by the Python server.
-
-## Accessing Node Structure
-
-For more advanced visualizations, you might want to access the full node structure:
-
-1. The `step_started` event includes the `root_id`, which is the hashkey of the root node
-2. Use the `node_id` values from various events to build a graph structure
-3. The status changes in `node_status_changed` events can be used to update node states
-4. If available, monitor the `nodes.json` file specified by the `--nodes-json-file` option to get the full graph structure
-5. Combine `node_created`, `node_added`, and `edge_added` events to dynamically build a full graph representation
-
-## Conclusion
-
-The event logging system provides a foundation for real-time monitoring and analytics of the Recursive Agent. By building enhanced visualizations on top of this system, developers can gain deeper insights into agent behavior, debug issues more effectively, and optimize agent performance. The new node and graph lifecycle events provide unprecedented visibility into the planning and graph building process, enabling more powerful visualization tools that can show how the agent's internal task graph evolves over time.
-
-For UI developers: the current UI implementation in `ui-react/` provides a functional table view example. Use this as a starting point for building more sophisticated UI components or visualizations.

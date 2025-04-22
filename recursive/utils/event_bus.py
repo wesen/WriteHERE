@@ -62,6 +62,11 @@ class EventType(str, Enum):
     INNER_GRAPH_BUILT = "inner_graph_built"
     NODE_RESULT_AVAILABLE = "node_result_available"
 
+    # --- Lifecycle Events ---
+    RUN_STARTED = "run_started"
+    RUN_FINISHED = "run_finished"
+    RUN_ERROR = "run_error"
+
 
 # --- Base Event Model ---
 class Event(BaseModel):
@@ -406,3 +411,98 @@ def emit_node_result_available(
     }
     # Context will add step, task_type etc. if available
     bus.publish(_create_event(EventType.NODE_RESULT_AVAILABLE, payload, ctx=ctx))
+
+
+# --- RUN LIFECYCLE EMITTERS ---
+
+
+def emit_run_started(
+    input_data: str,
+    config: Dict[str, Any],
+    run_mode: str,
+    timestamp_utc: datetime,
+    run_id: str,  # Require run_id for this event
+):
+    """Emits an event when a new run starts."""
+    # Set the global run ID when starting a run
+    set_run_id(run_id)
+
+    payload: Dict[str, Any] = {
+        "input_data": input_data,  # e.g., filename or initial query
+        "config": config,  # Selected configuration items
+        "run_mode": run_mode,
+        "timestamp_utc": timestamp_utc.isoformat() + "Z",  # Already UTC from caller
+    }
+    # Note: _create_event will add the run_id
+    bus.publish(_create_event(EventType.RUN_STARTED, payload, ctx=None))
+
+
+def emit_run_finished(
+    total_steps: int,
+    duration_seconds: float,
+    total_nodes: int,
+    total_llm_calls: int,
+    total_tool_calls: int,
+    token_usage_summary: Dict[str, int],
+    node_statistics: Dict[str, Any],
+    search_statistics: Optional[Dict[str, int]] = None,
+):
+    """Emits an event when a run completes successfully with summary statistics.
+
+    Args:
+        total_steps: Total number of execution steps completed
+        duration_seconds: Total runtime in seconds
+        total_nodes: Total number of nodes created
+        total_llm_calls: Total number of LLM API calls made
+        total_tool_calls: Total number of tool invocations
+        token_usage_summary: Dict containing token usage stats
+        node_statistics: Dict containing node creation/completion stats
+        search_statistics: Optional dict with search-specific stats (for report mode)
+    """
+    payload: Dict[str, Any] = {
+        "total_steps": total_steps,
+        "duration_seconds": duration_seconds,
+        "total_nodes": total_nodes,
+        "total_llm_calls": total_llm_calls,
+        "total_tool_calls": total_tool_calls,
+        "token_usage_summary": token_usage_summary,
+        "node_statistics": node_statistics,
+    }
+
+    if search_statistics is not None:
+        payload["search_statistics"] = search_statistics
+
+    bus.publish(_create_event(EventType.RUN_FINISHED, payload, ctx=None))
+
+
+def emit_run_error(
+    error_type: str,
+    error_message: str,
+    stack_trace: str,
+    context: Dict[str, Any],
+    node_id: Optional[str] = None,
+    step: Optional[int] = None,
+):
+    """Emits an event when a run encounters an unrecoverable error.
+
+    Args:
+        error_type: The class/type of the error
+        error_message: The error message string
+        stack_trace: Full stack trace of the error
+        context: Additional context about the error state
+        node_id: Optional ID of node where error occurred
+        step: Optional step number where error occurred
+    """
+    payload: Dict[str, Any] = {
+        "error_type": error_type,
+        "error_message": error_message,
+        "stack_trace": stack_trace,
+        "context": context,
+    }
+
+    if node_id is not None:
+        payload["node_id"] = node_id
+    if step is not None:
+        payload["step"] = step
+
+    bus.publish(_create_event(EventType.RUN_ERROR, payload, ctx=None))
