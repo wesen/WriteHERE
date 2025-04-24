@@ -8,12 +8,12 @@ WARMUP :
 - [x] Weird issues where a task gets cancelled and no redis events are received
 - [.] SOurcemaps in vite don't get loade (not fixing for now)
 
-- [ ] Add run_id to the run started event
-- [ ] Add run_id to the events themselves
+- [x] Add run_id to the run started event
+- [x] Add run_id to the events themselves
 
 - [ ] Some nodes don't seem to have parents
 - [ ] What about N/A status of new nodes?
-- [ ] Add run_id to the run started event
+- [x] Add run_id to the run started event
 - [ ] First node never has a node_added event
 
 ## TODO menial
@@ -49,11 +49,9 @@ WARMUP :
 
 - [x] Collect the node events to server a built up graph on the backend
 
-- [ ] Record LLM calls to replay to avoid hitting the API
+- [x] Record LLM calls to replay to avoid hitting the API
 
-- [ ] Record all events to sqlite to analyze later
-
-- [ ] Restore recursive state from sqlite
+- [x] Record all events to sqlite to analyze later
 
 ## Future
 
