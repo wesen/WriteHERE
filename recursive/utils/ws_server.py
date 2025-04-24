@@ -27,17 +27,10 @@ from recursive.utils.event_state_manager import EventStateManager
 # Import the new DatabaseManager
 from recursive.utils.db_manager import DatabaseManager
 
-# --- Configuration ---
-# Reuse stream name from event_bus or define separately
-EVENT_STREAM_NAME = os.getenv("EVENT_STREAM", "agent_events")
-REDIS_URL = os.getenv(
-    "REDIS_URL", "redis://localhost:6379/0"
-)  # Use URL format for async client
-WS_HOST = os.getenv("WS_HOST", "0.0.0.0")
-WS_PORT = int(os.getenv("WS_PORT", 9999))
-SQLITE_DB_PATH = os.getenv("SQLITE_DB_PATH", "runs/events.db")
-RELOAD_LATEST_SESSION = os.getenv("RELOAD_LATEST_SESSION", "false").lower() == "true"
+# Import the new ServerConfig
+from recursive.utils.config import ServerConfig
 
+# --- Configuration ---
 # Calculate path to the React build directory relative to this file
 # ws_server.py -> utils -> recursive -> ROOT -> ui-react/dist
 REACT_BUILD_DIR = Path(__file__).parent.parent.parent / "ui-react" / "dist"
@@ -55,11 +48,6 @@ event_manager = EventStateManager()
 # --- Setup Logging ---
 # Define the format including caller info
 LOG_FORMAT = "%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)d - %(funcName)s()] - %(message)s"
-logging.basicConfig(level=logging.DEBUG, format=LOG_FORMAT)
-# Get the root logger and ensure handlers use the format
-# This helps ensure Uvicorn's default handlers also pick up the format if they use the root logger.
-# However, explicitly configuring Uvicorn is more reliable.
-logging.getLogger().handlers[0].setFormatter(logging.Formatter(LOG_FORMAT))
 
 # Get a logger instance specific to this module
 logger = logging.getLogger(__name__)
@@ -73,6 +61,7 @@ class AppState:
         self.latest_events_for_broadcast: List[Dict] = (
             []
         )  # Only for sending history to new clients
+        self.config: ServerConfig = ServerConfig.from_env()
 
 
 app_state = AppState()
@@ -81,7 +70,9 @@ app_state = AppState()
 async def redis_listener(redis_client: aredis.Redis):
     """Listens to Redis stream, stores events in DB, updates state managers, and broadcasts."""
     last_id = "$"  # Start reading new messages
-    logger.info(f"Starting Redis listener on stream '{EVENT_STREAM_NAME}'...")
+    logger.info(
+        f"Starting Redis listener on stream '{app_state.config.event_stream}'..."
+    )
     try:  # Outer try to catch errors during the loop itself
         while True:
             inner_loop_completed_normally = False
@@ -91,7 +82,7 @@ async def redis_listener(redis_client: aredis.Redis):
                 )
                 # block=0 means wait indefinitely for new messages
                 response = await redis_client.xread(
-                    {EVENT_STREAM_NAME: last_id}, block=0
+                    {app_state.config.event_stream: last_id}, block=0
                 )
                 logger.info(
                     f"Redis listener: xread returned (response type: {type(response)})"
@@ -253,13 +244,13 @@ async def startup_event():
     logger.info("WebSocket server starting up...")
     try:
         # --- Initialize Database Manager ---
-        logger.info(f"Initializing database at {SQLITE_DB_PATH}")
-        app_state.db_manager = DatabaseManager(SQLITE_DB_PATH)
+        logger.info(f"Initializing database at {app_state.config.db_path}")
+        app_state.db_manager = DatabaseManager(app_state.config.db_path)
         logger.info("Database initialized successfully.")
         # ---------------------------------
 
         # --- Reload State from DB (Optional) ---
-        if RELOAD_LATEST_SESSION:
+        if app_state.config.reload_session:
             logger.info(
                 "RELOAD_LATEST_SESSION is true. Attempting to load latest session..."
             )
@@ -312,11 +303,17 @@ async def startup_event():
         # ---------------------------------------
 
         # --- Connect to Redis and Start Listener ---
-        logger.info(f"Attempting to connect to Redis at {REDIS_URL}...")
-        redis_client = aredis.from_url(REDIS_URL, decode_responses=True)
+        logger.info(
+            f"Attempting to connect to Redis at {app_state.config.redis_url}..."
+        )
+        redis_client = aredis.from_url(
+            app_state.config.redis_url, decode_responses=True
+        )
         logger.info("Pinging Redis...")
         await redis_client.ping()  # Verify connection
-        logger.info(f"Async Redis connected successfully to {REDIS_URL}")
+        logger.info(
+            f"Async Redis connected successfully to {app_state.config.redis_url}"
+        )
 
         # Start the Redis listener task in the background
         logger.info("Creating Redis listener task...")
@@ -328,7 +325,7 @@ async def startup_event():
 
     except aredis.exceptions.ConnectionError as e:
         logger.critical(
-            f"FATAL: Could not connect to Redis at {REDIS_URL} on startup: {e}",
+            f"FATAL: Could not connect to Redis at {app_state.config.redis_url} on startup: {e}",
             exc_info=True,
         )
         # Optionally, exit or handle this critical failure
@@ -510,7 +507,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
     try:
         # --- Send Historical Events if Loaded ---
-        if RELOAD_LATEST_SESSION and app_state.latest_events_for_broadcast:
+        if app_state.config.reload_session and app_state.latest_events_for_broadcast:
             logger.info(
                 f"Sending {len(app_state.latest_events_for_broadcast)} historical events to new client {websocket.client}"
             )
@@ -576,12 +573,26 @@ async def serve_react_app(full_path: str):
         )
 
 
-def run_server():
-    """Runs the Uvicorn server."""
-    logger.info(f"Starting Uvicorn server on {WS_HOST}:{WS_PORT}")
+def run_server(config: ServerConfig):
+    """Runs the Uvicorn server.
+
+    Args:
+        config: ServerConfig instance containing all server configuration
+    """
+    # Configure logging based on config
+    logging.basicConfig(
+        level=config.log_level if not config.debug else "DEBUG", format=LOG_FORMAT
+    )
+    # Get the root logger and ensure handlers use the format
+    logging.getLogger().handlers[0].setFormatter(logging.Formatter(LOG_FORMAT))
+
+    # Store config in app state for use by FastAPI
+    app_state.config = config
+
+    logger.info(f"Starting Uvicorn server on {config.host}:{config.port}")
     logger.info(f"React UI build directory expected at: {REACT_BUILD_DIR}")
-    logger.info(f"SQLite database path: {SQLITE_DB_PATH}")
-    logger.info(f"Reload latest session: {RELOAD_LATEST_SESSION}")
+    logger.info(f"SQLite database path: {config.db_path}")
+    logger.info(f"Reload latest session: {config.reload_session}")
     if not REACT_INDEX_FILE.exists():
         logger.warning("WARNING: React index.html not found!")
         logger.warning(f"Expected path: {REACT_INDEX_FILE}")
@@ -592,27 +603,23 @@ def run_server():
     logger.info(f"Uvicorn starting with log_config...")  # Log the config being used
     uvicorn.run(
         "recursive.utils.ws_server:app",  # Use "module:app" string for reload
-        host=WS_HOST,
-        port=WS_PORT,
+        host=config.host,
+        port=config.port,
         log_config=LOGGING_CONFIG,  # Use our custom logging config
         reload=False,  # Set reload=False when running programmatically
-        # log_level="debug" # This is now controlled by LOGGING_CONFIG
     )
 
 
-def start_ws_thread():
-    """Starts the FastAPI server in a separate daemon thread."""
+def start_ws_thread(config: ServerConfig):
+    """Starts the FastAPI server in a separate daemon thread.
+
+    Args:
+        config: ServerConfig instance containing all server configuration
+    """
     logger.info("Attempting to start WebSocket server thread...")
     server_thread = threading.Thread(
-        target=run_server, daemon=True, name="WebSocketServerThread"
+        target=lambda: run_server(config), daemon=True, name="WebSocketServerThread"
     )
     server_thread.start()
     logger.info(f"WebSocket server thread started (Thread ID: {server_thread.ident})")
     return server_thread
-
-
-# Example usage (if run directly)
-if __name__ == "__main__":
-    # This allows running the server standalone for testing
-    logger.info("Running WebSocket server directly...")
-    run_server()
