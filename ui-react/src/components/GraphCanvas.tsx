@@ -1,13 +1,14 @@
 import React, { useState, useCallback } from 'react';
 import { Canvas, Node, Edge, ElkCanvasLayoutOptions } from 'reaflow';
-import { useSelector } from 'react-redux';
+import { useSelector, useDispatch } from 'react-redux';
 import { selectReaflowGraph } from '../features/graph/reaflowAdapter';
 import { CustomNode } from './reaflow/CustomNode';
 import './reaflow/ReaflowCanvas.css';
 import { RootState } from '../store';
 import Spinner from 'react-bootstrap/Spinner';
 import Alert from 'react-bootstrap/Alert';
-import NodeDetailModal from './NodeDetailModal.tsx';
+import { pushModal } from '../features/ui/modalStackSlice';
+import { useAppDispatch } from '../store';
 
 const layout: ElkCanvasLayoutOptions = {
   'elk.algorithm': 'layered',
@@ -31,19 +32,19 @@ export const GraphCanvas: React.FC = () => {
   }));
   
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
-  const [showNodeModal, setShowNodeModal] = useState(false);
+  const dispatch = useAppDispatch();
 
   const onNodeClick = useCallback((id: string) => {
-    console.log("Node clicked:", id);
+    // Instead of showing our own modal, push to the modal stack
+    dispatch(pushModal({ type: 'node', params: { nodeId: id } }));
+    // Still keep track of selected node for visual highlighting
     setSelectedNodeId(id);
-    setShowNodeModal(true);
-  }, []);
+  }, [dispatch]);
 
   // Clear selection when clicking on canvas
   const onCanvasClick = useCallback(() => {
-    // Optionally: keep track of selection for visual highlight separately
-    // Or hide the modal if clicked outside
-    // setShowNodeModal(false); // Consider if this is desired behavior
+    // Just clear visual selection if needed
+    setSelectedNodeId(null);
   }, []);
 
   // Show loading indicator
@@ -102,17 +103,6 @@ export const GraphCanvas: React.FC = () => {
         }
         edge={<Edge />}
       />
-      {/* Render the modal */}
-      {selectedNodeId && (
-        <NodeDetailModal
-          show={showNodeModal}
-          onHide={() => {
-            setShowNodeModal(false);
-            setSelectedNodeId(null); // Clear selection when modal closes
-          }}
-          nodeId={selectedNodeId}
-        />
-      )}
     </div>
   );
 }; 

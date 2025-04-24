@@ -1,11 +1,9 @@
-import React from 'react';
-import { Card, Badge } from 'react-bootstrap'; // Keep only necessary imports
+import React, { useState } from 'react';
+import { Card, Tab, Nav, Badge, Button } from 'react-bootstrap';
 import { AgentEvent, LlmMessage } from '../features/events/eventsApi';
 import { isEventType } from '../helpers/eventType';
 import { ArrowRight } from 'lucide-react';
 import CodeHighlighter from './SyntaxHighlighter';
-
-// --- Copied & Adapted from EventDetailModal.tsx --- 
 
 // Status color mapping (using Bootstrap text colors)
 const statusColorMap: { [key: string]: string } = {
@@ -49,28 +47,60 @@ const renderPromptMessages = (messages: LlmMessage[]) => {
   );
 };
 
-// Render the summary content based on event type (mostly copied, removed some outer cards)
-const renderSummaryContent = (event: AgentEvent) => {
-  // ... (Keep all the `if (isEventType(...))` blocks from EventDetailModal.tsx)
-  // --- Start of copied content --- 
+interface NodeEventDetailPaneProps {
+  event: AgentEvent;
+  onNodeClick?: (nodeId: string) => void;
+}
+
+const NodeEventDetailPane: React.FC<NodeEventDetailPaneProps> = ({ event, onNodeClick }) => {
+  const [activeTab, setActiveTab] = useState('details');
+
+  // Display a shortened Node ID that's clickable if onNodeClick is provided
+  const renderClickableNodeId = (nodeId: string, label?: string, truncate: boolean = true) => {
+    if (!nodeId) return 'N/A';
+    
+    const displayText = truncate ? `${nodeId.substring(0, 8)}...` : nodeId;
+    
+    return onNodeClick ? (
+      <Button
+        variant="link"
+        className="p-0 text-decoration-none"
+        onClick={(e) => {
+          e.stopPropagation();
+          onNodeClick(nodeId);
+        }}
+      >
+        <small>{label || displayText}</small>
+      </Button>
+    ) : (
+      <small>{label || displayText}</small>
+    );
+  };
+
+  const hasEventSpecificData = isEventType('llm_call_completed')(event) ||
+    isEventType('plan_received')(event) ||
+    isEventType('tool_returned')(event);
+
+  const renderSummaryContent = (event: AgentEvent) => {
     if (isEventType('step_started')(event)) {
       return (
         <>
-          <div className="mb-3">
-            <strong>Step Information</strong>
-            <div className="row g-2 mt-1">
-              <div className="col-md-6">
-                <p className="mb-1"><small><strong>Step:</strong> {event.payload.step}</small></p>
-                <p className="mb-1"><small><strong>Node ID:</strong> {event.payload.node_id}</small></p>
-              </div>
-              <div className="col-md-6">
-                <p className="mb-1"><small><strong>Root ID:</strong> {event.payload.root_id}</small></p>
-              </div>
+          <strong>Step Information</strong>
+          <div className="row g-2 mt-1">
+            <div className="col-md-6">
+              <p className="mb-1"><small><strong>Step:</strong> {event.payload.step}</small></p>
+              <p className="mb-1">
+                <small><strong>Node ID:</strong> {renderClickableNodeId(event.payload.node_id, undefined, false)}</small>
+              </p>
+            </div>
+            <div className="col-md-6">
+              <p className="mb-1">
+                <small><strong>Root ID:</strong> {renderClickableNodeId(event.payload.root_id)}</small>
+              </p>
             </div>
           </div>
-          <div>
-            <strong>Node Goal</strong>
-            <pre className="bg-light p-2 rounded small mt-1">{event.payload.node_goal}</pre>
+          <div className="mt-2">
+            <p className="mb-1"><small><strong>Node Goal:</strong> {event.payload.node_goal}</small></p>
           </div>
         </>
       );
@@ -83,7 +113,9 @@ const renderSummaryContent = (event: AgentEvent) => {
           <div className="row g-2 mt-1">
             <div className="col-md-6">
               <p className="mb-1"><small><strong>Step:</strong> {event.payload.step}</small></p>
-              <p className="mb-1"><small><strong>Node ID:</strong> {event.payload.node_id}</small></p>
+              <p className="mb-1">
+                <small><strong>Node ID:</strong> {renderClickableNodeId(event.payload.node_id, undefined, false)}</small>
+              </p>
               <p className="mb-1"><small><strong>Action:</strong> {event.payload.action_name}</small></p>
             </div>
             <div className="col-md-6">
@@ -101,7 +133,9 @@ const renderSummaryContent = (event: AgentEvent) => {
           <strong>Status Change Details</strong>
           <div className="row g-2 mt-1">
             <div className="col-md-6">
-              <p className="mb-1"><small><strong>Node ID:</strong> {event.payload.node_id}</small></p>
+              <p className="mb-1">
+                <small><strong>Node ID:</strong> {renderClickableNodeId(event.payload.node_id, null, false)}</small>
+              </p>
               <p className="mb-1"><small><strong>Node Goal:</strong> {event.payload.node_goal}</small></p>
             </div>
             <div className="col-md-6">
@@ -120,28 +154,20 @@ const renderSummaryContent = (event: AgentEvent) => {
     if (isEventType('llm_call_started')(event)) {
       return (
         <>
-          <div className="mb-3">
-            <strong>LLM Call Information</strong>
-            <div className="row g-2 mt-1">
-              <div className="col-md-6">
-                <p className="mb-1"><small><strong>Agent Class:</strong> {event.payload.agent_class}</small></p>
-                <p className="mb-1"><small><strong>Model:</strong> {event.payload.model}</small></p>
-              </div>
-              <div className="col-md-6">
-                {event.payload.step !== undefined && <p className="mb-1"><small><strong>Step:</strong> {event.payload.step}</small></p>}
-                {event.payload.node_id && <p className="mb-1"><small><strong>Node ID:</strong> {event.payload.node_id}</small></p>}
-              </div>
+          <strong>LLM Call Details</strong>
+          <div className="row g-2 mt-1">
+            <div className="col-md-6">
+              <p className="mb-1"><small><strong>Agent:</strong> {event.payload.agent_class}</small></p>
+              <p className="mb-1"><small><strong>Model:</strong> {event.payload.model}</small></p>
             </div>
-          </div>
-          <div>
-            <strong>Prompt Preview</strong>
-            <CodeHighlighter
-              code={formatPreview(event.payload.prompt_preview)}
-              language="markdown"
-              maxHeight="250px"
-              className="mt-1"
-            />
-            {/* TODO: Add button/logic to show full prompt if needed */}
+            <div className="col-md-6">
+              {event.payload.action_name && <p className="mb-1"><small><strong>Action:</strong> {event.payload.action_name}</small></p>}
+              {event.payload.node_id && (
+                <p className="mb-1">
+                  <small><strong>Node ID:</strong> {renderClickableNodeId(event.payload.node_id, null, false)}</small>
+                </p>
+              )}
+            </div>
           </div>
         </>
       );
@@ -150,39 +176,21 @@ const renderSummaryContent = (event: AgentEvent) => {
     if (isEventType('llm_call_completed')(event)) {
       return (
         <>
-          <div className="mb-3">
-            <strong>LLM Response Information</strong>
-            <div className="row g-2 mt-1">
-              <div className="col-md-6">
-                <p className="mb-1"><small><strong>Agent Class:</strong> {event.payload.agent_class}</small></p>
-                <p className="mb-1"><small><strong>Model:</strong> {event.payload.model}</small></p>
-                <p className="mb-1"><small><strong>Duration:</strong> {event.payload.duration_seconds.toFixed(2)}s</small></p>
-              </div>
-              <div className="col-md-6">
-                {event.payload.step !== undefined && <p className="mb-1"><small><strong>Step:</strong> {event.payload.step}</small></p>}
-                {event.payload.node_id && <p className="mb-1"><small><strong>Node ID:</strong> {event.payload.node_id}</small></p>}
-                {event.payload.token_usage && (
-                  <p className="mb-1">
-                    <small><strong>Tokens:</strong> {event.payload.token_usage.prompt_tokens} prompt + {event.payload.token_usage.completion_tokens} completion</small>
-                  </p>
-                )}
-              </div>
+          <strong>LLM Call Results</strong>
+          <div className="row g-2 mt-1">
+            <div className="col-md-6">
+              <p className="mb-1"><small><strong>Agent:</strong> {event.payload.agent_class}</small></p>
+              <p className="mb-1"><small><strong>Model:</strong> {event.payload.model}</small></p>
+              <p className="mb-1"><small><strong>Duration:</strong> {event.payload.duration_seconds.toFixed(2)}s</small></p>
             </div>
-            {event.payload.error && (
-              <div className="alert alert-danger mt-2 small">
-                <strong>Error:</strong> {event.payload.error}
-              </div>
-            )}
-          </div>
-          <div>
-            <strong>Response Preview</strong>
-            <CodeHighlighter
-              code={formatPreview(event.payload.response)}
-              language="markdown"
-              maxHeight="250px"
-              className="mt-1"
-            />
-            {/* TODO: Add button/logic to show full response if needed */}
+            <div className="col-md-6">
+              <p className="mb-1"><small><strong>Tokens:</strong> {event.payload.token_usage?.prompt_tokens || 0} / {event.payload.token_usage?.completion_tokens || 0}</small></p>
+              {event.payload.node_id && (
+                <p className="mb-1">
+                  <small><strong>Node ID:</strong> {renderClickableNodeId(event.payload.node_id, null, false)}</small>
+                </p>
+              )}
+            </div>
           </div>
         </>
       );
@@ -198,7 +206,11 @@ const renderSummaryContent = (event: AgentEvent) => {
               <p className="mb-1"><small><strong>API:</strong> {event.payload.api_name}</small></p>
             </div>
             <div className="col-md-6">
-              {event.payload.node_id && <p className="mb-1"><small><strong>Node ID:</strong> {event.payload.node_id}</small></p>}
+              {event.payload.node_id && (
+                <p className="mb-1">
+                  <small><strong>Node ID:</strong> {renderClickableNodeId(event.payload.node_id, null, false)}</small>
+                </p>
+              )}
             </div>
           </div>
           <div className="mt-2">
@@ -217,37 +229,29 @@ const renderSummaryContent = (event: AgentEvent) => {
     if (isEventType('tool_returned')(event)) {
       return (
         <>
-          <div className="mb-3">
-            <strong>Tool Return Details</strong>
-            <div className="row g-2 mt-1">
-              <div className="col-md-6">
-                <p className="mb-1"><small><strong>Tool Name:</strong> {event.payload.tool_name}</small></p>
-                <p className="mb-1"><small><strong>API:</strong> {event.payload.api_name}</small></p>
-              </div>
-              <div className="col-md-6">
-                <p className="mb-1">
-                  <small><strong>State:</strong> 
-                  <span className={event.payload.state === 'SUCCESS' ? 'text-success' : 'text-danger'}> {event.payload.state}</span></small>
-                </p>
-                <p className="mb-1"><small><strong>Duration:</strong> {event.payload.duration_seconds.toFixed(2)}s</small></p>
-                {event.payload.node_id && <p className="mb-1"><small><strong>Node ID:</strong> {event.payload.node_id}</small></p>}
-              </div>
+          <strong>Tool Return Results</strong>
+          <div className="row g-2 mt-1">
+            <div className="col-md-6">
+              <p className="mb-1"><small><strong>Tool Name:</strong> {event.payload.tool_name}</small></p>
+              <p className="mb-1"><small><strong>API:</strong> {event.payload.api_name}</small></p>
+              <p className="mb-1">
+                <small><strong>Status:</strong> <span className={event.payload.state === 'SUCCESS' ? 'text-success' : 'text-danger'}>{event.payload.state}</span></small>
+              </p>
             </div>
-            {event.payload.error && (
-              <div className="alert alert-danger mt-2 small">
-                <strong>Error:</strong> {event.payload.error}
-              </div>
-            )}
+            <div className="col-md-6">
+              <p className="mb-1"><small><strong>Duration:</strong> {event.payload.duration_seconds.toFixed(2)}s</small></p>
+              {event.payload.node_id && (
+                <p className="mb-1">
+                  <small><strong>Node ID:</strong> {renderClickableNodeId(event.payload.node_id, null, false)}</small>
+                </p>
+              )}
+            </div>
           </div>
-          <div>
-            <strong>Result</strong>
-            <CodeHighlighter
-              code={event.payload.result_summary}
-              language="json"
-              maxHeight="200px"
-              className="mt-1"
-            />
-          </div>
+          {event.payload.error && (
+            <div className="alert alert-danger small mt-2 py-1">
+              <strong>Error:</strong> {event.payload.error}
+            </div>
+          )}
         </>
       );
     }
@@ -258,15 +262,23 @@ const renderSummaryContent = (event: AgentEvent) => {
           <strong>Node Creation Details</strong>
           <div className="row g-2 mt-1">
             <div className="col-md-6">
-              <p className="mb-1"><small><strong>Node ID:</strong> {event.payload.node_id}</small></p>
+              <p className="mb-1">
+                <small><strong>Node ID:</strong> {renderClickableNodeId(event.payload.node_id, null, false)}</small>
+              </p>
               <p className="mb-1"><small><strong>Node NID:</strong> {event.payload.node_nid}</small></p>
               <p className="mb-1"><small><strong>Node Type:</strong> {event.payload.node_type}</small></p>
               <p className="mb-1"><small><strong>Task Type:</strong> {event.payload.task_type}</small></p>
             </div>
             <div className="col-md-6">
               <p className="mb-1"><small><strong>Layer:</strong> {event.payload.layer}</small></p>
-              <p className="mb-1"><small><strong>Outer Node ID:</strong> {event.payload.outer_node_id || 'N/A'}</small></p>
-              <p className="mb-1"><small><strong>Root Node ID:</strong> {event.payload.root_node_id}</small></p>
+              <p className="mb-1">
+                <small><strong>Outer Node ID:</strong> {event.payload.outer_node_id 
+                  ? renderClickableNodeId(event.payload.outer_node_id) 
+                  : 'N/A'}</small>
+              </p>
+              <p className="mb-1">
+                <small><strong>Root Node ID:</strong> {renderClickableNodeId(event.payload.root_node_id)}</small>
+              </p>
             </div>
           </div>
           <div className="mt-2">
@@ -280,29 +292,18 @@ const renderSummaryContent = (event: AgentEvent) => {
     if (isEventType('plan_received')(event)) {
       return (
         <>
-          <div className="mb-3">
-            <strong>Plan Information</strong>
-            <div className="row g-2 mt-1">
-              <div className="col-md-6">
-                <p className="mb-1"><small><strong>Node ID:</strong> {event.payload.node_id}</small></p>
-                <p className="mb-1"><small><strong>Task Type:</strong> {event.payload.task_type || 'N/A'}</small></p>
-              </div>
-              <div className="col-md-6">
-                <p className="mb-1"><small><strong>Plan Items:</strong> {event.payload.raw_plan?.length || 0}</small></p>
-                <p className="mb-1"><small><strong>Task Goal:</strong> {event.payload.task_goal || 'N/A'}</small></p>
-              </div>
+          <strong>Plan Information</strong>
+          <div className="row g-2 mt-1">
+            <div className="col-md-6">
+              <p className="mb-1">
+                <small><strong>Node ID:</strong> {renderClickableNodeId(event.payload.node_id, null, false)}</small>
+              </p>
+              <p className="mb-1"><small><strong>Task Type:</strong> {event.payload.task_type || 'N/A'}</small></p>
             </div>
-          </div>
-
-          <div>
-            <strong>Plan Structure</strong>
-            <CodeHighlighter
-              code={JSON.stringify(event.payload.raw_plan, null, 2)}
-              language="json"
-              maxHeight="300px"
-              showLineNumbers={true}
-              className="mt-1"
-            />
+            <div className="col-md-6">
+              <p className="mb-1"><small><strong>Plan Items:</strong> {event.payload.raw_plan?.length || 0}</small></p>
+              <p className="mb-1"><small><strong>Task Goal:</strong> {event.payload.task_goal || 'N/A'}</small></p>
+            </div>
           </div>
         </>
       );
@@ -314,12 +315,16 @@ const renderSummaryContent = (event: AgentEvent) => {
           <strong>Node Added Details</strong>
           <div className="row g-2 mt-1">
             <div className="col-md-6">
-              <p className="mb-1"><small><strong>Graph Owner Node:</strong> {event.payload.graph_owner_node_id?.substring(0, 8) || 'N/A'}</small></p>
+              <p className="mb-1">
+                <small><strong>Graph Owner Node:</strong> {renderClickableNodeId(event.payload.graph_owner_node_id)}</small>
+              </p>
               <p className="mb-1"><small><strong>Task Type:</strong> {event.payload.task_type || 'N/A'}</small></p>
               <p className="mb-1"><small><strong>Task Goal:</strong> {event.payload.task_goal || 'N/A'}</small></p>
             </div>
             <div className="col-md-6">
-              <p className="mb-1"><small><strong>Added Node ID:</strong> {event.payload.added_node_id?.substring(0, 8) || 'N/A'}</small></p>
+              <p className="mb-1">
+                <small><strong>Added Node ID:</strong> {renderClickableNodeId(event.payload.added_node_id)}</small>
+              </p>
               <p className="mb-1"><small><strong>Added Node NID:</strong> {event.payload.added_node_nid}</small></p>
               <p className="mb-1"><small><strong>Step:</strong> {event.payload.step || 'N/A'}</small></p>
             </div>
@@ -334,7 +339,9 @@ const renderSummaryContent = (event: AgentEvent) => {
           <strong>Edge Creation Details</strong>
           <div className="row g-2 mt-1">
             <div className="col-md-6">
-              <p className="mb-1"><small><strong>Graph Owner Node:</strong> {event.payload.graph_owner_node_id?.substring(0, 8) || 'N/A'}</small></p>
+              <p className="mb-1">
+                <small><strong>Graph Owner Node:</strong> {renderClickableNodeId(event.payload.graph_owner_node_id)}</small>
+              </p>
               <p className="mb-1"><small><strong>Task Type:</strong> {event.payload.task_type || 'N/A'}</small></p>
               <p className="mb-1"><small><strong>Task Goal:</strong> {event.payload.task_goal || 'N/A'}</small></p>
             </div>
@@ -347,12 +354,16 @@ const renderSummaryContent = (event: AgentEvent) => {
             <div className="d-flex align-items-center justify-content-center">
               <div className="node-box border rounded p-1 bg-white">
                 <p className="mb-0"><small><strong>Parent:</strong> {event.payload.parent_node_nid}</small></p>
-                <p className="mb-0 small text-muted">{event.payload.parent_node_id?.substring(0, 8)}</p>
+                <p className="mb-0 small text-muted">
+                  {renderClickableNodeId(event.payload.parent_node_id)}
+                </p>
               </div>
               <ArrowRight size={20} className="mx-2 text-primary" />
               <div className="node-box border rounded p-1 bg-white">
                 <p className="mb-0"><small><strong>Child:</strong> {event.payload.child_node_nid}</small></p>
-                <p className="mb-0 small text-muted">{event.payload.child_node_id?.substring(0, 8)}</p>
+                <p className="mb-0 small text-muted">
+                  {renderClickableNodeId(event.payload.child_node_id)}
+                </p>
               </div>
             </div>
           </div>
@@ -363,63 +374,186 @@ const renderSummaryContent = (event: AgentEvent) => {
     if (isEventType('inner_graph_built')(event)) {
       return (
         <>
-          <div className="mb-3">
-            <strong>Graph Construction Completed</strong>
-            <div className="row g-2 mt-1">
-              <div className="col-md-6">
-                <p className="mb-1"><small><strong>Owner Node ID:</strong> {event.payload.node_id?.substring(0, 8) || 'N/A'}</small></p>
-                <p className="mb-1"><small><strong>Task Goal:</strong> {event.payload.task_goal || 'N/A'}</small></p>
-              </div>
-              <div className="col-md-6">
-                <p className="mb-1"><small><strong>Nodes:</strong> {event.payload.num_nodes}</small></p>
-                <p className="mb-1"><small><strong>Edges:</strong> {event.payload.num_edges}</small></p>
-              </div>
+          <strong>Graph Construction Completed</strong>
+          <div className="row g-2 mt-1">
+            <div className="col-md-6">
+              <p className="mb-1">
+                <small><strong>Owner Node ID:</strong> {renderClickableNodeId(event.payload.node_id)}</small>
+              </p>
+              <p className="mb-1"><small><strong>Task Type:</strong> {event.payload.task_type || 'N/A'}</small></p>
+              <p className="mb-1"><small><strong>Task Goal:</strong> {event.payload.task_goal || 'N/A'}</small></p>
+            </div>
+            <div className="col-md-6">
+              <p className="mb-1"><small><strong>Node Count:</strong> <Badge bg="primary">{event.payload.node_count}</Badge></small></p>
+              <p className="mb-1"><small><strong>Edge Count:</strong> <Badge bg="info">{event.payload.edge_count}</Badge></small></p>
+              <p className="mb-1"><small><strong>Step:</strong> {event.payload.step || 'N/A'}</small></p>
+            </div>
+          </div>
+          <div className="mt-2">
+            <small><strong>Graph Nodes:</strong></small>
+            <div className="mt-1">
+              {event.payload.node_ids?.map((nodeId: string, index: number) => (
+                <Badge key={index} bg="light" text="dark" className="me-1 mb-1 p-1">
+                  {renderClickableNodeId(nodeId, null, true)}
+                </Badge>
+              ))}
             </div>
           </div>
         </>
       );
     }
 
-    // Fallback for unknown event types
-    return <p>Details for event type {event.event_type} not yet implemented.</p>;
-  // --- End of copied content ---
-};
-
-// --- End Copied & Adapted --- 
-
-interface NodeEventDetailPaneProps {
-  event: AgentEvent;
-}
-
-const NodeEventDetailPane: React.FC<NodeEventDetailPaneProps> = ({ event }) => {
-  if (!event) return null;
-
-  const formatTimestamp = (isoString: string): string => {
-    try {
-      const date = new Date(isoString);
-      return date.toLocaleString('en-US', {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-        hour: 'numeric',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: true
-      });
-    } catch (e) {
-      return isoString;
+    if (isEventType('node_result_available')(event)) {
+      return (
+        <>
+          <strong>Node Result Information</strong>
+          <div className="row g-2 mt-1">
+            <div className="col-md-6">
+              <p className="mb-1">
+                <small><strong>Node ID:</strong> {renderClickableNodeId(event.payload.node_id)}</small>
+              </p>
+              <p className="mb-1"><small><strong>Action Name:</strong> {event.payload.action_name}</small></p>
+            </div>
+            <div className="col-md-6">
+              <p className="mb-1"><small><strong>Task Type:</strong> {event.payload.task_type || 'N/A'}</small></p>
+              <p className="mb-1"><small><strong>Task Goal:</strong> {event.payload.task_goal || 'N/A'}</small></p>
+            </div>
+          </div>
+        </>
+      );
     }
+
+    // Default case for unknown event types
+    return (
+      <div className="small">
+        <strong>Event Payload</strong>
+        <CodeHighlighter
+          code={JSON.stringify(event.payload, null, 2)}
+          language="json"
+          maxHeight="200px"
+          className="mt-1"
+        />
+      </div>
+    );
+  };
+
+  const renderEventResponse = (event: AgentEvent) => {
+    if (isEventType('llm_call_completed')(event)) {
+      return (
+        <div className="p-3">
+          <h6>LLM Response</h6>
+          <div className="bg-light p-2 rounded mt-2 mb-2">
+            <CodeHighlighter
+              code={event.payload.response}
+              language="markdown"
+              maxHeight="300px"
+            />
+          </div>
+        </div>
+      );
+    }
+
+    if (isEventType('plan_received')(event)) {
+      return (
+        <div className="p-3">
+          <h6>Raw Plan</h6>
+          <div className="bg-light p-2 rounded mt-2 mb-2">
+            <CodeHighlighter
+              code={JSON.stringify(event.payload.raw_plan, null, 2)}
+              language="json"
+              maxHeight="300px"
+              showLineNumbers={true}
+            />
+          </div>
+        </div>
+      );
+    }
+
+    if (isEventType('tool_returned')(event)) {
+      return (
+        <div className="p-3">
+          <h6>Tool Result</h6>
+          <div className="bg-light p-2 rounded mt-2 mb-2">
+            <CodeHighlighter
+              code={event.payload.result_summary}
+              language="json"
+              maxHeight="300px"
+            />
+          </div>
+        </div>
+      );
+    }
+
+    if (isEventType('node_result_available')(event)) {
+      return (
+        <div className="p-3">
+          <h6>Result Content</h6>
+          <div className="bg-light p-2 rounded mt-2 mb-2">
+            <CodeHighlighter
+              code={event.payload.result_summary}
+              language="markdown"
+              maxHeight="300px"
+            />
+          </div>
+        </div>
+      );
+    }
+
+    return null;
+  };
+
+  const renderRawJson = (event: AgentEvent) => {
+    return (
+      <div className="p-3">
+        <h6>Raw JSON</h6>
+        <div className="bg-light p-2 rounded mt-2">
+          <CodeHighlighter
+            code={JSON.stringify(event, null, 2)}
+            language="json"
+            maxHeight="300px"
+            showLineNumbers={true}
+          />
+        </div>
+      </div>
+    );
   };
 
   return (
     <Card>
-      <Card.Header className="d-flex justify-content-between align-items-center">
-        <span>Event Details: <strong>{event.event_type}</strong></span>
-        <small className="text-muted">{formatTimestamp(event.timestamp)}</small>
+      <Card.Header className="bg-light py-2">
+        <strong>Event Detail</strong>
       </Card.Header>
-      <Card.Body>
-        {renderSummaryContent(event)}
-        {/* Consider adding tabs for full prompt/response/raw JSON later if needed */}
+      <Card.Body className="p-0">
+        <Tab.Container activeKey={activeTab} onSelect={(k) => setActiveTab(k || 'details')}>
+          <Nav variant="tabs" className="px-3 pt-3">
+            <Nav.Item>
+              <Nav.Link eventKey="details">Details</Nav.Link>
+            </Nav.Item>
+            {hasEventSpecificData && (
+              <Nav.Item>
+                <Nav.Link eventKey="response">Response</Nav.Link>
+              </Nav.Item>
+            )}
+            <Nav.Item>
+              <Nav.Link eventKey="json">JSON</Nav.Link>
+            </Nav.Item>
+          </Nav>
+          <Tab.Content>
+            <Tab.Pane eventKey="details">
+              <div className="p-3">
+                {renderSummaryContent(event)}
+              </div>
+            </Tab.Pane>
+            {hasEventSpecificData && (
+              <Tab.Pane eventKey="response">
+                {renderEventResponse(event)}
+              </Tab.Pane>
+            )}
+            <Tab.Pane eventKey="json">
+              {renderRawJson(event)}
+            </Tab.Pane>
+          </Tab.Content>
+        </Tab.Container>
       </Card.Body>
     </Card>
   );

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Modal, Tab, Nav, Button, Badge } from 'react-bootstrap';
 import { AgentEvent, LlmMessage } from '../features/events/eventsApi';
 import { isEventType } from '../helpers/eventType';
-import { ArrowRight } from 'lucide-react';
+import { ArrowRight, ArrowLeft } from 'lucide-react';
 import CodeHighlighter from './SyntaxHighlighter';
 
 // Event type to badge variant mapping
@@ -32,9 +32,19 @@ interface EventDetailModalProps {
   show: boolean;
   onHide: () => void;
   event: AgentEvent | null;
+  onNodeClick?: (nodeId: string) => void;
+  hasPrevious?: boolean;
+  onBack?: () => void;
 }
 
-const EventDetailModal: React.FC<EventDetailModalProps> = ({ show, onHide, event }) => {
+const EventDetailModal: React.FC<EventDetailModalProps> = ({ 
+  show, 
+  onHide, 
+  event, 
+  onNodeClick,
+  hasPrevious = false,
+  onBack
+}) => {
   const [activeTab, setActiveTab] = useState('summary');
   
   if (!event) return null;
@@ -107,6 +117,34 @@ const EventDetailModal: React.FC<EventDetailModalProps> = ({ show, onHide, event
     return Boolean(payload && 'node_id' in payload);
   };
 
+  // Helper function to render a clickable node ID
+  const renderClickableNodeId = (nodeId: string, label?: string, truncate: boolean = true) => {
+    if (!nodeId) return 'N/A';
+    
+    const displayText = truncate ? `${nodeId.substring(0, 8)}...` : nodeId;
+    
+    return onNodeClick ? (
+      <Button
+        variant="link"
+        className="p-0 text-decoration-none"
+        onClick={(e) => {
+          e.stopPropagation();
+          onNodeClick(nodeId);
+        }}
+      >
+        {label || displayText}
+      </Button>
+    ) : (
+      label || displayText
+    );
+  };
+
+  const handleBackClick = () => {
+    if (onBack) {
+      onBack();
+    }
+  };
+
   // Render the summary tab content based on event type
   const renderSummaryContent = () => {
     if (isEventType('step_started')(event)) {
@@ -120,10 +158,14 @@ const EventDetailModal: React.FC<EventDetailModalProps> = ({ show, onHide, event
               <div className="row g-2">
                 <div className="col-md-6">
                   <p className="mb-1"><strong>Step:</strong> {event.payload.step}</p>
-                  <p className="mb-1"><strong>Node ID:</strong> {event.payload.node_id}</p>
+                  <p className="mb-1">
+                    <strong>Node ID:</strong> {renderClickableNodeId(event.payload.node_id)}
+                  </p>
                 </div>
                 <div className="col-md-6">
-                  <p className="mb-1"><strong>Root ID:</strong> {event.payload.root_id}</p>
+                  <p className="mb-1">
+                    <strong>Root ID:</strong> {renderClickableNodeId(event.payload.root_id)}
+                  </p>
                 </div>
               </div>
             </div>
@@ -150,7 +192,9 @@ const EventDetailModal: React.FC<EventDetailModalProps> = ({ show, onHide, event
             <div className="row g-2">
               <div className="col-md-6">
                 <p className="mb-1"><strong>Step:</strong> {event.payload.step}</p>
-                <p className="mb-1"><strong>Node ID:</strong> {event.payload.node_id}</p>
+                <p className="mb-1">
+                  <strong>Node ID:</strong> {renderClickableNodeId(event.payload.node_id)}
+                </p>
                 <p className="mb-1"><strong>Action:</strong> {event.payload.action_name}</p>
               </div>
               <div className="col-md-6">
@@ -172,14 +216,16 @@ const EventDetailModal: React.FC<EventDetailModalProps> = ({ show, onHide, event
           <div className="card-body">
             <div className="row g-2">
               <div className="col-md-6">
-                <p className="mb-1"><strong>Node ID:</strong> {event.payload.node_id}</p>
+                <p className="mb-1">
+                  <strong>Node ID:</strong> {renderClickableNodeId(event.payload.node_id)}
+                </p>
                 <p className="mb-1"><strong>Node Goal:</strong> {event.payload.node_goal}</p>
               </div>
               <div className="col-md-6">
                 <p className="mb-1">
-                  <strong>Status Change:</strong> 
+                  <strong>Status Change:</strong>
                   <span className={statusColorMap[event.payload.old_status] || ''}> {event.payload.old_status}</span>
-                  <ArrowRight size={14} className="mx-2" />
+                  <ArrowRight size={16} className="mx-1" />
                   <span className={statusColorMap[event.payload.new_status] || ''}>{event.payload.new_status}</span>
                 </p>
               </div>
@@ -203,8 +249,12 @@ const EventDetailModal: React.FC<EventDetailModalProps> = ({ show, onHide, event
                   <p className="mb-1"><strong>Model:</strong> {event.payload.model}</p>
                 </div>
                 <div className="col-md-6">
-                  {event.payload.step !== undefined && <p className="mb-1"><strong>Step:</strong> {event.payload.step}</p>}
-                  {event.payload.node_id && <p className="mb-1"><strong>Node ID:</strong> {event.payload.node_id}</p>}
+                  <p className="mb-1"><strong>Action:</strong> {event.payload.action_name || 'N/A'}</p>
+                  {event.payload.node_id && (
+                    <p className="mb-1">
+                      <strong>Node ID:</strong> {renderClickableNodeId(event.payload.node_id)}
+                    </p>
+                  )}
                 </div>
               </div>
             </div>
@@ -247,11 +297,15 @@ const EventDetailModal: React.FC<EventDetailModalProps> = ({ show, onHide, event
                   <p className="mb-1"><strong>Duration:</strong> {event.payload.duration_seconds.toFixed(2)}s</p>
                 </div>
                 <div className="col-md-6">
-                  {event.payload.step !== undefined && <p className="mb-1"><strong>Step:</strong> {event.payload.step}</p>}
-                  {event.payload.node_id && <p className="mb-1"><strong>Node ID:</strong> {event.payload.node_id}</p>}
+                  <p className="mb-1"><strong>Action:</strong> {event.payload.action_name || 'N/A'}</p>
+                  {event.payload.node_id && (
+                    <p className="mb-1">
+                      <strong>Node ID:</strong> {renderClickableNodeId(event.payload.node_id)}
+                    </p>
+                  )}
                   {event.payload.token_usage && (
                     <p className="mb-1">
-                      <strong>Tokens:</strong> {event.payload.token_usage.prompt_tokens} prompt + {event.payload.token_usage.completion_tokens} completion
+                      <strong>Tokens:</strong> {event.payload.token_usage.prompt_tokens} / {event.payload.token_usage.completion_tokens}
                     </p>
                   )}
                 </div>
@@ -297,7 +351,11 @@ const EventDetailModal: React.FC<EventDetailModalProps> = ({ show, onHide, event
                 <p className="mb-1"><strong>API:</strong> {event.payload.api_name}</p>
               </div>
               <div className="col-md-6">
-                {event.payload.node_id && <p className="mb-1"><strong>Node ID:</strong> {event.payload.node_id}</p>}
+                {event.payload.node_id && (
+                  <p className="mb-1">
+                    <strong>Node ID:</strong> {renderClickableNodeId(event.payload.node_id)}
+                  </p>
+                )}
               </div>
             </div>
             <div className="mt-3">
@@ -332,7 +390,11 @@ const EventDetailModal: React.FC<EventDetailModalProps> = ({ show, onHide, event
                     <span className={event.payload.state === 'SUCCESS' ? 'text-success' : 'text-danger'}> {event.payload.state}</span>
                   </p>
                   <p className="mb-1"><strong>Duration:</strong> {event.payload.duration_seconds.toFixed(2)}s</p>
-                  {event.payload.node_id && <p className="mb-1"><strong>Node ID:</strong> {event.payload.node_id}</p>}
+                  {event.payload.node_id && (
+                    <p className="mb-1">
+                      <strong>Node ID:</strong> {renderClickableNodeId(event.payload.node_id)}
+                    </p>
+                  )}
                 </div>
               </div>
               {event.payload.error && (
@@ -367,15 +429,25 @@ const EventDetailModal: React.FC<EventDetailModalProps> = ({ show, onHide, event
           <div className="card-body">
             <div className="row g-2">
               <div className="col-md-6">
-                <p className="mb-1"><strong>Node ID:</strong> {event.payload.node_id}</p>
+                <p className="mb-1">
+                  <strong>Node ID:</strong> {renderClickableNodeId(event.payload.node_id, null, false)}
+                </p>
                 <p className="mb-1"><strong>Node NID:</strong> {event.payload.node_nid}</p>
                 <p className="mb-1"><strong>Node Type:</strong> {event.payload.node_type}</p>
                 <p className="mb-1"><strong>Task Type:</strong> {event.payload.task_type}</p>
               </div>
               <div className="col-md-6">
                 <p className="mb-1"><strong>Layer:</strong> {event.payload.layer}</p>
-                <p className="mb-1"><strong>Outer Node ID:</strong> {event.payload.outer_node_id || 'N/A'}</p>
-                <p className="mb-1"><strong>Root Node ID:</strong> {event.payload.root_node_id}</p>
+                <p className="mb-1">
+                  <strong>Outer Node ID:</strong>{' '}
+                  {event.payload.outer_node_id 
+                    ? renderClickableNodeId(event.payload.outer_node_id)
+                    : 'N/A'}
+                </p>
+                <p className="mb-1">
+                  <strong>Root Node ID:</strong>{' '}
+                  {renderClickableNodeId(event.payload.root_node_id)}
+                </p>
               </div>
             </div>
             <div className="mt-3">
@@ -397,7 +469,9 @@ const EventDetailModal: React.FC<EventDetailModalProps> = ({ show, onHide, event
             <div className="card-body">
               <div className="row g-2">
                 <div className="col-md-6">
-                  <p className="mb-1"><strong>Node ID:</strong> {event.payload.node_id}</p>
+                  <p className="mb-1">
+                    <strong>Node ID:</strong> {renderClickableNodeId(event.payload.node_id)}
+                  </p>
                   <p className="mb-1"><strong>Task Type:</strong> {event.payload.task_type || 'N/A'}</p>
                 </div>
                 <div className="col-md-6">
@@ -434,12 +508,18 @@ const EventDetailModal: React.FC<EventDetailModalProps> = ({ show, onHide, event
           <div className="card-body">
             <div className="row g-2">
               <div className="col-md-6">
-                <p className="mb-1"><strong>Graph Owner Node:</strong> {event.payload.graph_owner_node_id?.substring(0, 8) || 'N/A'}</p>
+                <p className="mb-1">
+                  <strong>Graph Owner Node:</strong>{' '}
+                  {renderClickableNodeId(event.payload.graph_owner_node_id)}
+                </p>
                 <p className="mb-1"><strong>Task Type:</strong> {event.payload.task_type || 'N/A'}</p>
                 <p className="mb-1"><strong>Task Goal:</strong> {event.payload.task_goal || 'N/A'}</p>
               </div>
               <div className="col-md-6">
-                <p className="mb-1"><strong>Added Node ID:</strong> {event.payload.added_node_id?.substring(0, 8) || 'N/A'}</p>
+                <p className="mb-1">
+                  <strong>Added Node ID:</strong>{' '}
+                  {renderClickableNodeId(event.payload.added_node_id)}
+                </p>
                 <p className="mb-1"><strong>Added Node NID:</strong> {event.payload.added_node_nid}</p>
                 <p className="mb-1"><strong>Step:</strong> {event.payload.step || 'N/A'}</p>
               </div>
@@ -459,7 +539,10 @@ const EventDetailModal: React.FC<EventDetailModalProps> = ({ show, onHide, event
             <div className="card-body">
               <div className="row g-2">
                 <div className="col-md-6">
-                  <p className="mb-1"><strong>Graph Owner Node:</strong> {event.payload.graph_owner_node_id?.substring(0, 8) || 'N/A'}</p>
+                  <p className="mb-1">
+                    <strong>Graph Owner Node:</strong>{' '}
+                    {renderClickableNodeId(event.payload.graph_owner_node_id)}
+                  </p>
                   <p className="mb-1"><strong>Task Type:</strong> {event.payload.task_type || 'N/A'}</p>
                   <p className="mb-1"><strong>Task Goal:</strong> {event.payload.task_goal || 'N/A'}</p>
                 </div>
@@ -472,12 +555,16 @@ const EventDetailModal: React.FC<EventDetailModalProps> = ({ show, onHide, event
                 <div className="d-flex align-items-center justify-content-center">
                   <div className="node-box border rounded p-2 bg-white">
                     <p className="mb-0"><strong>Parent:</strong> {event.payload.parent_node_nid}</p>
-                    <p className="mb-0 small text-muted">{event.payload.parent_node_id?.substring(0, 8)}</p>
+                    <p className="mb-0 small text-muted">
+                      {renderClickableNodeId(event.payload.parent_node_id)}
+                    </p>
                   </div>
                   <ArrowRight size={30} className="mx-3 text-primary" />
                   <div className="node-box border rounded p-2 bg-white">
                     <p className="mb-0"><strong>Child:</strong> {event.payload.child_node_nid}</p>
-                    <p className="mb-0 small text-muted">{event.payload.child_node_id?.substring(0, 8)}</p>
+                    <p className="mb-0 small text-muted">
+                      {renderClickableNodeId(event.payload.child_node_id)}
+                    </p>
                   </div>
                 </div>
               </div>
@@ -497,7 +584,10 @@ const EventDetailModal: React.FC<EventDetailModalProps> = ({ show, onHide, event
             <div className="card-body">
               <div className="row g-2">
                 <div className="col-md-6">
-                  <p className="mb-1"><strong>Owner Node ID:</strong> {event.payload.node_id?.substring(0, 8) || 'N/A'}</p>
+                  <p className="mb-1">
+                    <strong>Owner Node ID:</strong>{' '}
+                    {renderClickableNodeId(event.payload.node_id)}
+                  </p>
                   <p className="mb-1"><strong>Task Type:</strong> {event.payload.task_type || 'N/A'}</p>
                   <p className="mb-1"><strong>Task Goal:</strong> {event.payload.task_goal || 'N/A'}</p>
                 </div>
@@ -518,7 +608,7 @@ const EventDetailModal: React.FC<EventDetailModalProps> = ({ show, onHide, event
               <div className="node-id-list">
                 {event.payload.node_ids?.map((nodeId: string, index: number) => (
                   <Badge key={index} bg="light" text="dark" className="me-2 mb-2 p-2">
-                    {nodeId.substring(0, 8)}
+                    {renderClickableNodeId(nodeId)}
                   </Badge>
                 ))}
               </div>
@@ -538,7 +628,10 @@ const EventDetailModal: React.FC<EventDetailModalProps> = ({ show, onHide, event
             <div className="card-body">
               <div className="row g-2">
                 <div className="col-md-6">
-                  <p className="mb-1"><strong>Node ID:</strong> {event.payload.node_id?.substring(0, 8) || 'N/A'}</p>
+                  <p className="mb-1">
+                    <strong>Node ID:</strong>{' '}
+                    {renderClickableNodeId(event.payload.node_id)}
+                  </p>
                   <p className="mb-1"><strong>Action Name:</strong> {event.payload.action_name}</p>
                 </div>
                 <div className="col-md-6">
@@ -633,15 +726,106 @@ const EventDetailModal: React.FC<EventDetailModalProps> = ({ show, onHide, event
 
   const specialTabs = getSpecialTabs();
 
+  // Render special tab content based on active tab
+  const renderSpecialTabContent = () => {
+    if (activeTab === 'prompt' && isEventType('llm_call_started')(event)) {
+      return (
+        <div className="p-3">
+          <h5>Full Prompt</h5>
+          {Array.isArray(event.payload.prompt) ? (
+            event.payload.prompt.map((message: LlmMessage, index: number) => (
+              <div key={index} className="mb-3">
+                <div className="fw-bold">{message.role}</div>
+                <CodeHighlighter
+                  code={message.content}
+                  language="markdown"
+                  maxHeight="400px"
+                />
+              </div>
+            ))
+          ) : (
+            <div className="alert alert-warning">
+              Prompt is not in expected format
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    if (activeTab === 'response' && isEventType('llm_call_completed')(event)) {
+      return (
+        <div className="p-3">
+          <h5>Full Response</h5>
+          <CodeHighlighter
+            code={event.payload.response}
+            language="markdown"
+            maxHeight="400px"
+          />
+        </div>
+      );
+    }
+
+    if (activeTab === 'plan' && isEventType('plan_received')(event)) {
+      return (
+        <div className="p-3">
+          <h5>Raw Plan</h5>
+          <CodeHighlighter
+            code={JSON.stringify(event.payload.raw_plan, null, 2)}
+            language="json"
+            maxHeight="400px"
+            showLineNumbers={true}
+          />
+        </div>
+      );
+    }
+
+    if (activeTab === 'result') {
+      if (isEventType('tool_returned')(event)) {
+        return (
+          <div className="p-3">
+            <h5>Tool Result</h5>
+            <CodeHighlighter
+              code={event.payload.result_summary}
+              language="json"
+              maxHeight="400px"
+            />
+          </div>
+        );
+      }
+
+      if (isEventType('node_result_available')(event)) {
+        return (
+          <div className="p-3">
+            <h5>Node Result</h5>
+            <CodeHighlighter
+              code={event.payload.result_summary}
+              language="markdown"
+              maxHeight="400px"
+            />
+          </div>
+        );
+      }
+    }
+
+    return null;
+  };
+
   return (
     <Modal show={show} onHide={onHide} size="lg" aria-labelledby="event-detail-modal" centered>
       <Modal.Header closeButton>
-        <Modal.Title id="event-detail-modal">
-          <Badge bg={getBadgeVariant(event.event_type)} className="me-2">
-            {event.event_type}
-          </Badge>
-          <small className="text-muted">{formatTimestamp(event.timestamp)}</small>
-        </Modal.Title>
+        <div className="d-flex align-items-center w-100">
+          {hasPrevious && (
+            <Button variant="link" className="p-0 me-2" onClick={handleBackClick}>
+              <ArrowLeft size={20} />
+            </Button>
+          )}
+          <Modal.Title className="flex-grow-1">
+            <Badge bg={getBadgeVariant(event.event_type)} className="me-2">
+              {event.event_type}
+            </Badge>
+            <small className="text-muted">{formatTimestamp(event.timestamp)}</small>
+          </Modal.Title>
+        </div>
       </Modal.Header>
       <Modal.Body className="p-0">
         <Tab.Container activeKey={activeTab} onSelect={(k) => setActiveTab(k || 'summary')}>
@@ -667,7 +851,7 @@ const EventDetailModal: React.FC<EventDetailModalProps> = ({ show, onHide, event
             </Tab.Pane>
             {specialTabs.map(tab => (
               <Tab.Pane key={tab.key} eventKey={tab.key}>
-                {tab.content}
+                {activeTab === tab.key && renderSpecialTabContent()}
               </Tab.Pane>
             ))}
             <Tab.Pane eventKey="json">
@@ -710,13 +894,13 @@ const EventDetailModal: React.FC<EventDetailModalProps> = ({ show, onHide, event
                       {hasNodeId(event.payload) && (
                         <tr>
                           <th>Node ID</th>
-                          <td>{(event.payload as { node_id: string }).node_id}</td>
+                          <td>{renderClickableNodeId((event.payload as { node_id: string }).node_id, null, false)}</td>
                         </tr>
                       )}
                       {isEventType('step_started')(event) && (
                         <tr>
                           <th>Root Node ID</th>
-                          <td>{event.payload.root_id}</td>
+                          <td>{renderClickableNodeId(event.payload.root_id)}</td>
                         </tr>
                       )}
                     </tbody>

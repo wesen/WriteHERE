@@ -5,6 +5,8 @@ import { Play, CheckCircle, ArrowRight, Clock, Zap, Database, Search, AlertCircl
 import { isEventType } from '../helpers/eventType'; // Import the type guard
 import EventDetailModal from './EventDetailModal';
 import './styles.css'; // We'll add a separate styles file
+import { useAppDispatch } from '../store';
+import { pushModal } from '../features/ui/modalStackSlice';
 
 // Helper function to extract common IDs or return N/A
 const getEventStep = (event: AgentEvent): number | string => {
@@ -246,21 +248,13 @@ const EventTable: React.FC = () => {
     const { data, error, isLoading } = useGetEventsQuery(undefined, {
         // pollingInterval: 30000, 
     });
-    const [selectedEvent, setSelectedEvent] = useState<AgentEvent | null>(null);
-    const [showModal, setShowModal] = useState(false);
-
+    const dispatch = useAppDispatch();
     const events = data?.events ?? [];
     const status = data?.status ?? ConnectionStatus.Connecting;
 
     // Handle opening the modal with a specific event
     const handleEventClick = (event: AgentEvent) => {
-        setSelectedEvent(event);
-        setShowModal(true);
-    };
-
-    // Handle closing the modal
-    const handleCloseModal = () => {
-        setShowModal(false);
+        dispatch(pushModal({ type: 'event', params: { eventId: event.event_id } }));
     };
 
     if (isLoading && !data) {
@@ -333,13 +327,6 @@ const EventTable: React.FC = () => {
                     })}
                 </tbody>
             </Table>
-
-            {/* Event Detail Modal */}
-            <EventDetailModal 
-                show={showModal} 
-                onHide={handleCloseModal} 
-                event={selectedEvent} 
-            />
         </>
     );
 };

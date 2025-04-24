@@ -8,6 +8,7 @@ import { GraphCanvas } from './components/GraphCanvas';
 import { useDispatch } from 'react-redux';
 import { initializeGraphState } from './features/graph/graphSlice';
 import { AppDispatch } from './store';
+import ModalManager from './components/ModalManager';
 
 export default function App() {
   const dispatch = useDispatch<AppDispatch>();
@@ -28,6 +29,9 @@ export default function App() {
           <GraphCanvas />
         </Tab>
       </Tabs>
+      
+      {/* Modal Manager handles all modal display and navigation */}
+      <ModalManager />
     </Container>
   );
 }

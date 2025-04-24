@@ -441,6 +441,193 @@ return (
 
 This two-modal approach provides both a general event exploration path (starting from the table) and a node-centric exploration path (starting from the graph), allowing users to delve into the agent's execution details effectively.
 
+### Modal Navigation Stack
+
+To provide a more seamless exploration experience, the system implements a modal stack navigation pattern that allows users to navigate through related entities without losing context. This pattern is implemented using Redux for state management and React components for the UI.
+
+#### Modal Stack Architecture
+
+The modal stack is managed through a dedicated Redux slice that maintains a stack of modal descriptors:
+
+```typescript
+// In modalStackSlice.ts
+export interface ModalDescriptor {
+  type: "node" | "event";
+  params: { nodeId?: string; eventId?: string };
+}
+
+interface ModalState {
+  stack: ModalDescriptor[];
+}
+
+const modalStackSlice = createSlice({
+  name: "modalStack",
+  initialState: { stack: [] },
+  reducers: {
+    pushModal(state, action: PayloadAction<ModalDescriptor>) {
+      state.stack.push(action.payload);
+    },
+    popModal(state) {
+      state.stack.pop();
+    },
+    replaceTop(state, action: PayloadAction<ModalDescriptor>) {
+      if (state.stack.length)
+        state.stack[state.stack.length - 1] = action.payload;
+      else state.stack.push(action.payload);
+    },
+    clearStack(state) {
+      state.stack = [];
+    },
+  },
+});
+```
+
+#### Modal Manager Component
+
+A central `ModalManager` component handles the rendering of modals based on the current state of the modal stack:
+
+```typescript
+// In ModalManager.tsx
+export const ModalManager: React.FC = () => {
+  const dispatch = useAppDispatch();
+  const stack = useAppSelector((s) => s.modalStack.stack);
+  const top = stack[stack.length - 1];
+
+  // Handle browser back button for modal navigation
+  useEffect(() => {
+    const handlePopState = () => {
+      if (stack.length > 0) {
+        dispatch(popModal());
+      }
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [dispatch, stack.length]);
+
+  // Push state to history when a modal is added
+  useEffect(() => {
+    if (stack.length > 0) {
+      window.history.pushState({ modalStack: true }, "");
+    }
+  }, [stack.length]);
+
+  if (!top) return null; // nothing to show
+
+  const onHide = () => {
+    // When explicitly closing the modal, clear the entire stack
+    dispatch(clearStack());
+    // Also clear browser history states we've added
+    const historyDepth = stack.length;
+    for (let i = 0; i < historyDepth; i++) {
+      window.history.back();
+    }
+  };
+
+  const onBack = () => dispatch(popModal());
+
+  const onNodeClick = (nodeId: string) => {
+    dispatch(pushModal({ type: "node", params: { nodeId } }));
+  };
+
+  const onEventClick = (eventId: string) => {
+    dispatch(pushModal({ type: "event", params: { eventId } }));
+  };
+
+  switch (top.type) {
+    case "node":
+      return (
+        <NodeDetailModal
+          show
+          onHide={onHide}
+          nodeId={top.params.nodeId!}
+          onNodeClick={onNodeClick}
+          onEventClick={onEventClick}
+          hasPrevious={stack.length > 1}
+          onBack={onBack}
+        />
+      );
+    case "event":
+      // Find the event by its ID
+      const event = eventsData?.events.find(
+        (e) => e.event_id === top.params.eventId
+      );
+      if (!event) return null;
+
+      return (
+        <EventDetailModal
+          show
+          onHide={onHide}
+          event={event}
+          onNodeClick={onNodeClick}
+          hasPrevious={stack.length > 1}
+          onBack={onBack}
+        />
+      );
+  }
+};
+```
+
+#### Modal Integration
+
+Both the `NodeDetailModal` and `EventDetailModal` components are enhanced with navigation capabilities:
+
+1. **Clickable Node IDs**: Node IDs across the UI are rendered as clickable buttons, allowing navigation to node details.
+2. **Back Navigation**: Each modal includes a back button (when applicable) to return to the previous modal in the stack.
+3. **Browser History Integration**: The modal stack integrates with the browser's history, enabling back/forward navigation with browser controls.
+
+```typescript
+// Example of clickable node rendering in NodeDetailModal.tsx
+const renderClickableNodeId = (
+  nodeId: string,
+  label?: string,
+  truncate: boolean = true
+) => {
+  const displayText = truncate ? `${nodeId.substring(0, 8)}...` : nodeId;
+
+  return onNodeClick ? (
+    <Button
+      variant="link"
+      className="p-0 text-decoration-none"
+      onClick={() => onNodeClick(nodeId)}
+    >
+      {label || displayText}
+    </Button>
+  ) : (
+    label || displayText
+  );
+};
+```
+
+#### User Interaction Flow
+
+The modal stack system enables fluid navigation through related entities:
+
+1. **Entry Points**: Users can enter the modal navigation system by:
+   - Clicking on a node in the graph canvas
+   - Clicking on an event row in the event table
+2. **Navigation Within Modals**: Once within a modal, users can:
+
+   - Click on any node ID to view that node's details
+   - Click on an event from a node's related events to view that event
+   - Click the back button to return to the previous modal
+   - Click the close button to exit the entire modal stack
+
+3. **Browser Integration**: The system integrates with browser navigation:
+   - Browser back button pops the top modal from the stack
+   - Each modal push adds a history entry, enabling forward navigation
+   - Closing the modal clears relevant history entries
+
+#### Benefits of the Modal Stack Approach
+
+This navigation pattern offers several advantages:
+
+1. **Contextual Exploration**: Users can explore related entities without losing context or their place in the exploration flow.
+2. **Reduced UI Clutter**: Instead of opening multiple modals or windows, the stack approach keeps the interface clean.
+3. **Intuitive Navigation**: The back button pattern matches common web navigation patterns.
+4. **History Support**: Integration with browser history provides consistent navigation behavior.
+5. **Centralized State Management**: The Redux-based approach keeps modal state predictable and maintainable.
+
 ## Best Practices for Development
 
 ### Adding New Event Types
