@@ -6,6 +6,8 @@ WARMUP :
   - [ ] Fix white font in the node detail modal
   - [ ] show the NID in the events list
 
+- [ ] show the metadata of the node_created event when clicking on the node
+
 - outer node id should be reflected in the graph as a parent relation ship maybe?
 
 ## BUGS / issues
@@ -20,6 +22,7 @@ WARMUP :
 - [ ] What about N/A status of new nodes?
 - [x] Add run_id to the run started event
 - [x] First node never has a node_added event
+- [ ] edge_added is missing the step number
 
 ## TODO menial
 

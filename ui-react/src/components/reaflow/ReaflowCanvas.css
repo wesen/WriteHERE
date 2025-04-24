@@ -184,4 +184,32 @@ NODE_BUTTON_SIZE = 32px;
 .reaflow-edge.edge-hierarchy .reaflow-marker path {
   fill: #888; /* Match marker color to edge color */
   stroke: #888;
+}
+
+/* Nested node styles */
+.node-nested {
+  border-left: 4px solid #1976d2;
+  background-color: rgba(25, 118, 210, 0.04);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.node-nested .node-content {
+  background-color: rgba(255, 255, 255, 0.9);
+}
+
+.node-nested[aria-selected='true'] {
+  border-color: #1976d2;
+  box-shadow: 0 4px 8px rgba(25, 118, 210, 0.2);
+}
+
+/* Edge styles for nested relationships */
+.reaflow-edge.edge-nested path {
+  stroke: #1976d2;
+  stroke-width: 2;
+  stroke-dasharray: 5,5;
+}
+
+.reaflow-edge.edge-nested .reaflow-marker path {
+  fill: #1976d2;
+  stroke: #1976d2;
 } 

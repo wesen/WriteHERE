@@ -14,6 +14,12 @@ const layout: ElkCanvasLayoutOptions = {
   'elk.direction': 'DOWN',
   'elk.spacing.nodeNode': '100',
   'elk.layered.spacing.nodeNodeBetweenLayers': '100',
+  'elk.hierarchyHandling': 'INCLUDE_CHILDREN',
+  'elk.layered.nodePlacement.strategy': 'NETWORK_SIMPLEX',
+  'elk.layered.layering.strategy': 'NETWORK_SIMPLEX',
+  'elk.layered.crossMin.strategy': 'LAYER_SWEEP',
+  'elk.spacing.componentComponent': '80',
+  'elk.spacing.nodeNodeBetweenLayers': '100',
 };
 
 export const GraphCanvas: React.FC = () => {
@@ -81,6 +87,8 @@ export const GraphCanvas: React.FC = () => {
         nodes={nodes}
         edges={edges}
         layoutOptions={layout}
+        maxWidth={2000}
+        maxHeight={1200}
         node={
           <Node>
             {(p) => (

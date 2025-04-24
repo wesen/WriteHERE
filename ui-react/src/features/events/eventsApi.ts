@@ -460,6 +460,19 @@ export const eventsApi = createApi({
                 );
                 break;
               }
+              case "inner_graph_built": {
+                const p = msg.payload as InnerGraphBuiltPayload;
+                // Update the parent node with its inner node IDs
+                dispatch(
+                  graphNodeUpdated({
+                    id: p.node_id,
+                    changes: {
+                      inner_nodes: p.node_ids,
+                    },
+                  })
+                );
+                break;
+              }
               // Handle other event types if they should affect the graph
             }
           } catch (e) {

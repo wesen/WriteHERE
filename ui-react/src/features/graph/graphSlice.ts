@@ -16,6 +16,7 @@ export type Node = {
   layer: number;
   taskType: string;
   status?: string; // NOT_READY, READY, ...
+  inner_nodes?: string[]; // Array of node IDs that are part of this node's inner graph
 };
 
 export type Edge = {

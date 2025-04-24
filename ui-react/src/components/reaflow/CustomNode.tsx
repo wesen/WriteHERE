@@ -19,18 +19,19 @@ stats?: Record<string, string | number>;
 // Explicitly type MyNodeData inline based on usage and tutorial
 export interface MyNodeData {
   id: string;
-  // parent?: string; // No longer needed for flat structure
-  text?: string; // Keep text for compatibility or specific uses if needed
-  width?: number;
-  height?: number;
-  data?: {
-    type?: string;
-    title?: string;
-    description?: string;
-    stats?: Record<string, string | number>; // Use string | number for status
-    showStats?: boolean;
-    showError?: boolean;
+  width?: number; // Make optional
+  height?: number; // Make optional
+  data: {
+    type: string;
+    title: string;
+    description: string;
+    stats: {
+      status: string;
+    };
+    showStats: boolean;
+    showError: boolean;
   };
+  parent?: string; // Change to optional string (undefined)
 }
 
 
@@ -96,56 +97,56 @@ return (
 // --- Main CustomNode Component ---
 
 export interface CustomNodeProps {
-// Changed: nodeProps: NodeChildProps; -> Add MyNodeData to node
-nodeProps: NodeChildProps;
-selectedNode: string | null;
-// nodes: MyNodeData[]; // No longer needed for parent check
-onNodeClick: (id: string) => void;
-// Changed: onAddClick: (node: MyNodeData) => void; -> Make optional as per tutorial
-onAddClick?: (node: MyNodeData) => void;
+  nodeProps: {
+    node: MyNodeData;
+    x?: number;
+    y?: number;
+  };
+  selectedNode: string | null;
+  onNodeClick?: (id: string) => void;
+  onAddClick?: (node: MyNodeData) => void;
 }
 
 export const CustomNode: React.FC<CustomNodeProps> = ({
-nodeProps,
-selectedNode,
-onNodeClick,
-onAddClick
+  nodeProps,
+  selectedNode,
+  onNodeClick,
+  onAddClick
 }) => {
-const { node } = nodeProps; // x, y are provided but not used in this version
-const width = node.width || NODE_WIDTH;
-const height = node.height || NODE_HEIGHT;
+  const { node } = nodeProps; // node here is NodeChildProps['node'], which includes calculated x, y, width, height
+  const width = node.width ?? NODE_WIDTH; // Use calculated width, fallback to default
+  const height = node.height ?? NODE_HEIGHT; // Use calculated height, fallback to default
   const isSelected = selectedNode === node.id;
-  const isDisabled = false; // Add logic if needed
+  const isDisabled = false;
+  // Check parent using the node passed in props
+  const isNested = node.parent !== undefined;
+
+  // Ensure node.data exists before accessing its properties
+  const nodeInternalData = node.data || {} as MyNodeData['data']; // Use type assertion for safety
 
   // Determine if add button should be shown (e.g., hide for 'end' type)
-  const showAddButton = node.data?.type !== 'end' && onAddClick; // Only show if handler provided
+  const showAddButton = nodeInternalData.type !== 'end' && onAddClick;
 
   return (
     <foreignObject x={0} y={0}
      width={width} height={height}
-     className="node-style-reset" // Apply reset class here
+     className="node-style-reset"
      >
-      {/* Wrapper div takes node-wrapper class */}
-      <div className="node-wrapper">
+      {/* Use the node from props which has the necessary layout info and data */}
+      <div className={`node-wrapper ${isNested ? 'node-nested' : ''}`}>
         <NodeContent
-          node={node}
+          node={node as MyNodeData} // Assert type for NodeContent which expects our defined MyNodeData
           selected={isSelected}
           onClick={onNodeClick ? () => onNodeClick(node.id) : undefined}
         />
 
-        {/* Add Button - similar structure to reachat */}
         {showAddButton && (
           <div className="add-button">
-            {/* Basic button for now, can enhance with icons later */}
             <button
               disabled={isDisabled}
-              // size="middle"
-              // shape="circle"
-              // icon={<PlusOutlined />}
               onClick={(e) => {
-                e.stopPropagation(); // Prevent node click
-                // Check if onAddClick exists before calling
-                if (onAddClick) onAddClick(node);
+                e.stopPropagation();
+                if (onAddClick) onAddClick(node as MyNodeData); // Assert type here too
               }}
             >
               +
