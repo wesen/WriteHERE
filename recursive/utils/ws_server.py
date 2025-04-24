@@ -255,6 +255,24 @@ async def startup_event():
                 "RELOAD_LATEST_SESSION is true. Attempting to load latest session..."
             )
             if app_state.db_manager:
+                # --- Load Graph State Directly ---
+                logger.info("Loading latest graph structure directly from DB...")
+                latest_nodes, latest_edges = app_state.db_manager.get_latest_run_graph()
+                if latest_nodes or latest_edges:
+                    await graph_manager.load_state_from_db(latest_nodes, latest_edges)
+                    logger.info(
+                        f"Loaded {len(latest_nodes)} nodes and {len(latest_edges)} edges into GraphStateManager."
+                    )
+                else:
+                    logger.info(
+                        "No nodes or edges found for the latest run in DB for graph state."
+                    )
+                # ----------------------------------
+
+                # --- Load Events for History/Replay ---
+                logger.info(
+                    "Loading event history from DB for EventStateManager and broadcast..."
+                )
                 historical_events = app_state.db_manager.get_latest_run_events()
                 if historical_events:
                     logger.info(
@@ -264,32 +282,28 @@ async def startup_event():
                     # Store for broadcasting to new clients
                     app_state.latest_events_for_broadcast = historical_events
 
-                    # --- Replay Events into State Managers ---
-                    logger.info("Replaying historical events into state managers...")
-                    # Clear existing state first (important!)
+                    # --- Replay Events into Event State Manager Only ---
+                    logger.info("Replaying historical events into EventStateManager...")
+                    # Clear existing event state first (important!)
                     await event_manager.clear_events()
-                    # Assuming graph_manager is implicitly cleared or managed per-run
-                    # If not, uncomment: await graph_manager.clear_state()
 
                     processed_count = 0
                     for event in historical_events:
                         try:
-                            event_type = event.get("event_type", "UNKNOWN")
                             # Add to event manager
                             await event_manager.add_event(event)
-                            # Process for graph manager
-                            await graph_manager.process_event(event)
+                            # *DO NOT* process for graph manager here - state was loaded directly
                             processed_count += 1
                         except Exception as e:
                             logger.error(
-                                f"Error replaying event {event.get('event_id')}: {e}",
+                                f"Error replaying event {event.get('event_id')} into EventStateManager: {e}",
                                 exc_info=True,
                             )
 
                     logger.info(
-                        f"Finished replaying {processed_count}/{len(historical_events)} events."
+                        f"Finished replaying {processed_count}/{len(historical_events)} events into EventStateManager."
                     )
-                    # -------------------------------------------
+                    # -------------------------------------------------
                 else:
                     logger.info(
                         "No historical events found for the latest run in the database."

@@ -236,7 +236,7 @@ class GraphRunEngine:
             node_id=need_next_step_node.hashkey,
             node_goal=need_next_step_node.task_info.get("goal", "?"),
             root_id=self.root_node.hashkey,
-            ctx=None,  # Initial step start doesn't have prior context
+            ctx=self.initial_ctx,  # Pass initial context which contains run_id
         )
 
         # Get parent node IDs (hashkeys)

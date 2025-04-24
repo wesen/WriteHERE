@@ -11,13 +11,15 @@ The event logging system consists of several main components:
 1.  **Event Bus** (`recursive/utils/event_bus.py`): Handles the emission of events from the agent.
 2.  **Instrumentation Points**: Strategic locations in the codebase where events are emitted to track agent execution using the Event Bus.
 3.  **Redis Stream**: (`agent_events` by default) Acts as the message broker for real-time event distribution.
-4.  **SQLite Database**: (`runs/events.db` by default) Persistently stores all events, node data, and graph structure for analysis and session replay.
+4.  **SQLite Database**: (`runs/events.db` by default) Persistently stores all events, node data, graph structure, and raw plan data for analysis and session replay.
 5.  **Database Manager** (`recursive/utils/db_manager.py`): Manages the SQLite connection, schema creation, and data storage/retrieval logic.
 6.  **WebSocket Server** (`recursive/utils/ws_server.py`): A FastAPI server that:
     - Reads events from the Redis stream.
-    - Stores events and related graph data into the SQLite database via the `DatabaseManager`.
+    - Stores events and related data (nodes, edges, plans) into the SQLite database via the `DatabaseManager`.
     - Updates in-memory state managers (`EventStateManager`, `GraphStateManager`) for real-time API access.
-    - Optionally reloads the latest run state from the database on startup.
+    - **On startup (if `RELOAD_LATEST_SESSION=true`):**
+      - Loads the graph structure (nodes, edges) directly from the DB into `GraphStateManager`.
+      - Loads the full event history from the DB and replays it into `EventStateManager` for historical context.
     - Forwards live events to connected WebSocket clients.
     - Serves the React UI.
 
@@ -31,7 +33,9 @@ graph TD
         D -- Uses --> G[Event State Manager]
         D -- Uses --> H[Graph State Manager]
         D -- Sends --> E(WebSocket Clients)
-        F -- Stores/Loads --> I[(SQLite DB: events.db)]
+        I[(SQLite DB: events.db)] <-- Stores/Loads --- F
+        F -- Loads Graph --> H
+        F -- Loads Events --> G
         D -- Serves --> J[Browser UI]
     end
     E -- Connects --> D
@@ -41,17 +45,16 @@ graph TD
 
 ## Core Components and Files
 
-| Component         | File Path                                | Description                                                        |
-| ----------------- | ---------------------------------------- | ------------------------------------------------------------------ |
-| EventBus          | `recursive/utils/event_bus.py`           | Defines event types, schemas, and publish methods                  |
-| WebSocket Server  | `recursive/utils/ws_server.py`           | Relays events, stores data, manages state, serves UI               |
-| Database Manager  | `recursive/utils/db_manager.py`          | Handles SQLite connection, schema, storage, retrieval              |
-| Event State Mgr   | `recursive/utils/event_state_manager.py` | Manages in-memory list of events for the current/latest run        |
-| Graph State Mgr   | `recursive/utils/graph_state_manager.py` | Manages in-memory graph state for the current/latest run           |
-| Standalone Server | `server-main.py`                         | Entry point for running the WebSocket server as a separate process |
-| React UI Source   | `ui-react/`                              | Source code for the React/Redux/Bootstrap event visualization UI   |
-| Basic UI          | `ui/index.html`                          | ~~Simple visualization of event stream~~ (REMOVED)                 |
-| SQLite Database   | `runs/events.db` (default)               | Persistent storage for all runs, events, nodes, and edges          |
+| Component         | File Path                                | Description                                                                         |
+| ----------------- | ---------------------------------------- | ----------------------------------------------------------------------------------- |
+| EventBus          | `recursive/utils/event_bus.py`           | Defines event types, schemas, and publish methods                                   |
+| WebSocket Server  | `recursive/utils/ws_server.py`           | Relays events, stores data, manages state (incl. direct graph load), serves UI      |
+| Database Manager  | `recursive/utils/db_manager.py`          | Handles SQLite connection, schema, storage, retrieval (nodes, edges, events, plans) |
+| Event State Mgr   | `recursive/utils/event_state_manager.py` | Manages in-memory list of events for the current/latest run (loaded from DB)        |
+| Graph State Mgr   | `recursive/utils/graph_state_manager.py` | Manages in-memory graph state for the current/latest run (loaded directly from DB)  |
+| Standalone Server | `server-main.py`                         | Entry point for running the WebSocket server as a separate process                  |
+| React UI Source   | `ui-react/`                              | Source code for the React/Redux/Bootstrap event visualization UI                    |
+| SQLite Database   | `runs/events.db` (default)               | Persistent storage for all runs, events, nodes, edges, and raw plans                |
 
 ## Event Schema
 
@@ -77,7 +80,7 @@ The system emits 14 types of events, all defined in the `EventType` enum in `rec
 
 Emitted once at the beginning of an agent run.
 
-**Emission Point**: In `story_writing()` and `report_writing()` functions, after reading input data.
+**Emission Point**: In `story_writing()` (recursive/story_writing.py) and `report_writing()` (recursive/report_writing.py) functions, after reading input data.
 
 **Payload**:
 
@@ -555,11 +558,17 @@ This explicit passing and enrichment ensures that the `run_id` and other relevan
 
 ## Database Storage (SQLite)
 
-To ensure persistence and enable analysis of past runs, all events, along with the constructed graph data (nodes and edges), are stored in a SQLite database managed by the `DatabaseManager` class.
+To ensure persistence and enable analysis of past runs, the system stores:
+
+- All emitted events in the `events` table.
+- The constructed graph structure (nodes and edges) in the `nodes` and `edges` tables.
+- Raw planning data in the `graph_plans` table.
+
+This data is managed by the `DatabaseManager` class.
 
 ### Database Schema
 
-The schema is designed to capture all event data and the relationships between runs, nodes, and edges.
+The schema captures event data, run metadata, node/edge state, and raw plans.
 
 ```sql
 -- Base events table storing common fields
@@ -570,7 +579,7 @@ CREATE TABLE events (
     event_type TEXT NOT NULL,        -- One of the 14 event types
     timestamp TEXT NOT NULL,         -- ISO format timestamp
     payload JSON NOT NULL,           -- Full event payload as JSON
-    node_id TEXT,                    -- Optional link to related node
+    node_id TEXT,                    -- Optional link to related node (from payload)
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -588,7 +597,7 @@ CREATE TABLE runs (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Table to store nodes
+-- Table to store nodes (represents the persistent state of the graph nodes)
 CREATE TABLE nodes (
     node_id TEXT PRIMARY KEY,        -- UUID of the node
     run_id TEXT NOT NULL,            -- Link to parent run
@@ -596,19 +605,19 @@ CREATE TABLE nodes (
     node_type TEXT NOT NULL,         -- PLAN_NODE, EXECUTE_NODE, etc.
     task_type TEXT NOT NULL,         -- COMPOSITION, REASONING, etc.
     task_goal TEXT NOT NULL,         -- Node's goal/purpose
-    status TEXT NOT NULL,            -- Current node status
+    status TEXT NOT NULL,            -- Current node status (updated by events)
     layer INTEGER NOT NULL,          -- Node's depth in the tree
     outer_node_id TEXT,              -- Parent node in hierarchy (if any)
     root_node_id TEXT NOT NULL,      -- Top-level node of this branch
-    result JSON,                     -- Node's final output (if any)
-    metadata JSON,                   -- Additional node properties
+    result JSON,                     -- Node's final output (if any, updated by events)
+    metadata JSON,                   -- Additional node properties from creation
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (run_id) REFERENCES runs(run_id),
     FOREIGN KEY (outer_node_id) REFERENCES nodes(node_id)
 );
 
--- Table to store node relationships (edges)
+-- Table to store node relationships (edges) (represents the persistent state of graph edges)
 CREATE TABLE edges (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     run_id TEXT NOT NULL,            -- Link to parent run
@@ -622,6 +631,18 @@ CREATE TABLE edges (
     FOREIGN KEY (parent_node_id) REFERENCES nodes(node_id),
     FOREIGN KEY (child_node_id) REFERENCES nodes(node_id)
 );
+
+-- Table to store raw planning data associated with a node
+CREATE TABLE graph_plans (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id TEXT NOT NULL,
+    node_id TEXT NOT NULL,              -- Node that received the plan
+    raw_plan JSON NOT NULL,             -- The raw plan data
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (run_id) REFERENCES runs(run_id),
+    FOREIGN KEY (node_id) REFERENCES nodes(node_id)
+);
+
 ```
 
 _(Indexes and Views are defined in `db_manager.py` for performance and querying ease)_
@@ -632,14 +653,25 @@ _(Indexes and Views are defined in `db_manager.py` for performance and querying 
 2.  The `redis_listener` in `ws_server.py` reads the event from Redis.
 3.  The event is passed to `db_manager.store_event(event)`.
 4.  `store_event` inserts the base event record into the `events` table.
-5.  Based on the `event_type`, specific handler methods (`_handle_run_started`, `_handle_node_created`, `_handle_edge_added`, etc.) are called to insert or update records in the `runs`, `nodes`, and `edges` tables.
+5.  Based on the `event_type`, specific handler methods (`_handle_run_started`, `_handle_node_created`, `_handle_node_status_changed`, `_handle_node_result_available`, `_handle_edge_added`, `_handle_plan_received`, etc.) are called to insert or update records in the `runs`, `nodes`, `edges`, and `graph_plans` tables. The `nodes` and `edges` tables represent the persistent state derived from key events like `node_created` and `edge_added`.
 
 ## WebSocket Server Implementation
 
 The WebSocket server (`recursive/utils/ws_server.py`) integrates the Redis listener, Database Manager, State Managers, and WebSocket broadcasting:
 
-- **Startup (`startup_event`)**: Initializes the `DatabaseManager`. If `RELOAD_LATEST_SESSION` is true, it loads events from the latest run from the DB and replays them into the `EventStateManager` and `GraphStateManager` to restore the server's in-memory state. Connects to Redis and starts the `redis_listener` task.
-- **Redis Listener (`redis_listener`)**: Continuously reads new events from Redis. For each event, it calls `db_manager.store_event()` to persist the data, then updates the in-memory state managers (`event_manager`, `graph_manager`), and finally broadcasts the raw event string to all connected WebSocket clients.
+- **Startup (`startup_event`)**:
+  - Initializes the `DatabaseManager`.
+  - If `RELOAD_LATEST_SESSION` is true:
+    1.  Calls `db_manager.get_latest_run_graph()` to fetch node and edge data from the `nodes` and `edges` tables for the most recent run.
+    2.  Calls `graph_manager.load_state_from_db()` to directly populate the in-memory graph state.
+    3.  Calls `db_manager.get_latest_run_events()` to fetch the full event history for the most recent run.
+    4.  Replays these historical events _only_ into the `EventStateManager` using `event_manager.add_event()` to build the historical event list. Stores these events for broadcasting to newly connected clients.
+  - Connects to Redis and starts the `redis_listener` task.
+- **Redis Listener (`redis_listener`)**: Continuously reads new events from Redis. For each event, it:
+  - Calls `db_manager.store_event()` to persist the event and update corresponding DB state (nodes, edges, runs, plans).
+  - Updates the in-memory `EventStateManager`.
+  - Updates the in-memory `GraphStateManager` _only_ for events relevant to live graph changes (`run_started`, `node_created`, `node_status_changed`, `edge_added`).
+  - Broadcasts the raw event string to all connected WebSocket clients.
 - **WebSocket Endpoint (`websocket_endpoint`)**: Handles new client connections. If historical events were loaded during startup, they are sent to the newly connected client.
 - **API Endpoints (`/api/...`)**: Serve data directly from the in-memory `EventStateManager` and `GraphStateManager`, reflecting either a live run or the reloaded state.
 - **Shutdown (`shutdown_event`)**: Cancels the Redis listener task and closes the SQLite database connection via `db_manager.close()`.
@@ -763,8 +795,8 @@ This frontend implementation enables real-time visualization of the graph buildi
 
    - Each message is a serialized `Event` object
 
-3. **State Management**: The UI should maintain its own state, updated by incoming WebSocket events. It can also fetch the complete current graph/event state via the `/api/graph` and `/api/events` endpoints, which reflect the server's in-memory state (potentially reloaded from the DB).
-4. **Session Reload**: If the server is started with `RELOAD_LATEST_SESSION=true`, the UI will initially receive a batch of historical events from the latest run via WebSocket before live events start streaming.
+3. **State Management**: The UI should maintain its own state, updated by incoming WebSocket events. It can also fetch the complete current graph/event state via the `/api/graph` and `/api/events` endpoints, which reflect the server's in-memory state (which is now loaded directly from the DB on reload).
+4. **Session Reload**: If the server is started with `RELOAD_LATEST_SESSION=true`, the server first loads the graph structure directly from the DB into its `GraphStateManager`. It then loads the event history into `EventStateManager` and sends this history batch to newly connecting clients via WebSocket before live events start streaming.
 
 For UI developers: the current UI implementation in `ui-react/` provides a functional table view example. Use this as a starting point for building more sophisticated UI components or visualizations.
 

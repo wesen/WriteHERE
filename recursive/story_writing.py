@@ -213,6 +213,7 @@ def story_writing(
                     "dependency": [],
                 },
                 node_type=NodeType.PLAN_NODE,
+                ctx=ctx,
             )
             root_node.node_graph_info["root_node"] = root_node
             engine = GraphRunEngine(root_node, "xml", config, initial_ctx=ctx)

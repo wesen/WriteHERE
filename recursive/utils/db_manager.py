@@ -149,6 +149,26 @@ class DatabaseManager:
             logger.info("Views created or verified.")
             self.conn.commit()
             logger.info("Database schema initialized successfully.")
+
+            # Add graph_plans table
+            self.conn.execute(
+                """
+            CREATE TABLE IF NOT EXISTS graph_plans (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                run_id TEXT NOT NULL,
+                node_id TEXT NOT NULL,
+                raw_plan JSON NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (run_id) REFERENCES runs(run_id),
+                FOREIGN KEY (node_id) REFERENCES nodes(node_id)
+            )"""
+            )
+            # Add index for graph_plans
+            self.conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_graph_plans_node ON graph_plans(node_id)"
+            )
+
+            self.conn.commit()
         except sqlite3.Error as e:
             logger.error(
                 f"SQLite error during database initialization: {e}", exc_info=True
@@ -167,7 +187,8 @@ class DatabaseManager:
         event_type = event.get("event_type")
         payload = event.get("payload", {})
         run_id = event.get("run_id")
-        node_id = payload.get("node_id")  # Node ID might be in payload for some events
+        # Node ID might be in payload for some events, or directly in the node table for node-specific events
+        node_id = payload.get("node_id")
 
         if not run_id:
             logger.warning(f"Event missing run_id: {event.get('event_id')}")
@@ -189,7 +210,7 @@ class DatabaseManager:
                     event_type,
                     event.get("timestamp"),
                     json.dumps(payload),  # Store original payload
-                    node_id,  # Store node_id if present in payload
+                    node_id,  # Store node_id if present in payload for filtering/joining
                 ),
             )
             # logger.debug(f"Stored event: {event.get('event_id')} ({event_type})")
@@ -199,7 +220,7 @@ class DatabaseManager:
             )
             # Don't raise - we don't want to break the main event flow
 
-        # Handle specific event types to update other tables
+        # Handle specific event types to update other tables (runs, nodes, edges, graph_plans)
         try:
             if event_type == "run_started":
                 self._handle_run_started(event)
@@ -210,13 +231,14 @@ class DatabaseManager:
             elif event_type == "node_created":
                 self._handle_node_created(event)
             elif event_type == "node_status_changed":
-                # Also update node table status
                 self._handle_node_status_changed(event)
             elif event_type == "node_result_available":
-                # Also update node table result
                 self._handle_node_result_available(event)
             elif event_type == "edge_added":
                 self._handle_edge_added(event)
+            elif event_type == "plan_received":
+                self._handle_plan_received(event)
+            # node_added and inner_graph_built no longer need specific DB handlers
 
             self.conn.commit()
         except sqlite3.Error as e:
@@ -225,17 +247,21 @@ class DatabaseManager:
                 exc_info=True,
             )
             try:
-                self.conn.rollback()  # Rollback changes from this event's side effects
+                if self.conn:  # Check conn before rollback
+                    self.conn.rollback()  # Rollback changes from this event's side effects
             except sqlite3.Error as rb_err:
                 logger.error(f"Error rolling back transaction: {rb_err}")
 
     def _handle_run_started(self, event: Dict):
         """Creates a new run record."""
+        if not self.conn:
+            logger.error(
+                "Database connection is not available. Cannot store run started event."
+            )
+            return
         payload = event.get("payload", {})
         run_id = event.get("run_id")
         timestamp = event.get("timestamp")
-        # Check if root_node_id is available in the run_started payload?
-        # Assuming not for now, will be set later if needed.
         sql = """
         INSERT INTO runs (run_id, start_time, status)
         VALUES (?, ?, 'running')
@@ -244,16 +270,16 @@ class DatabaseManager:
             status = excluded.status,
             updated_at = CURRENT_TIMESTAMP
         """
-        if self.conn:
-            self.conn.execute(sql, (run_id, timestamp))
-            logger.info(f"Run started/updated in DB: {run_id}")
-        else:
-            logger.error(
-                "Database connection is not available. Cannot store run started event."
-            )
+        self.conn.execute(sql, (run_id, timestamp))
+        logger.info(f"Run started/updated in DB: {run_id}")
 
     def _handle_run_finished(self, event: Dict):
         """Updates run record on successful completion."""
+        if not self.conn:
+            logger.error(
+                "Database connection is not available. Cannot store run finished event."
+            )
+            return
         payload = event.get("payload", {})
         run_id = event.get("run_id")
         timestamp = event.get("timestamp")
@@ -266,24 +292,24 @@ class DatabaseManager:
             updated_at = CURRENT_TIMESTAMP
         WHERE run_id = ?
         """
-        if self.conn:
-            self.conn.execute(
-                sql,
-                (
-                    timestamp,
-                    payload.get("total_steps"),
-                    payload.get("total_nodes"),
-                    run_id,
-                ),
-            )
-            logger.info(f"Run finished in DB: {run_id}")
-        else:
-            logger.error(
-                "Database connection is not available. Cannot store run finished event."
-            )
+        self.conn.execute(
+            sql,
+            (
+                timestamp,
+                payload.get("total_steps"),
+                payload.get("total_nodes"),
+                run_id,
+            ),
+        )
+        logger.info(f"Run finished in DB: {run_id}")
 
     def _handle_run_error(self, event: Dict):
         """Updates run record on error."""
+        if not self.conn:
+            logger.error(
+                "Database connection is not available. Cannot store run error event."
+            )
+            return
         payload = event.get("payload", {})
         run_id = event.get("run_id")
         timestamp = event.get("timestamp")
@@ -295,16 +321,16 @@ class DatabaseManager:
             updated_at = CURRENT_TIMESTAMP
         WHERE run_id = ?
         """
-        if self.conn:
-            self.conn.execute(sql, (timestamp, payload.get("error_message"), run_id))
-            logger.warning(f"Run error recorded in DB: {run_id}")
-        else:
-            logger.error(
-                "Database connection is not available. Cannot store run error event."
-            )
+        self.conn.execute(sql, (timestamp, payload.get("error_message"), run_id))
+        logger.warning(f"Run error recorded in DB: {run_id}")
 
     def _handle_node_created(self, event: Dict):
         """Inserts a new node record."""
+        if not self.conn:
+            logger.error(
+                "Database connection is not available. Cannot store node created event."
+            )
+            return
         payload = event.get("payload", {})
         run_id = event.get("run_id")
         node_id = payload.get("node_id")
@@ -315,7 +341,6 @@ class DatabaseManager:
             )
             return
 
-        # Determine initial status - assume 'READY' or extract if available
         initial_status = payload.get("initial_status", "READY")  # Default assumption
 
         sql = """
@@ -326,16 +351,13 @@ class DatabaseManager:
             node_type = excluded.node_type,
             task_type = excluded.task_type,
             task_goal = excluded.task_goal,
-            -- Don't overwrite status, layer, etc. on conflict? Or should we? Depends on idempotency needs. Let's update.
             status = excluded.status,
             layer = excluded.layer,
             outer_node_id = excluded.outer_node_id,
             root_node_id = excluded.root_node_id,
             metadata = excluded.metadata,
             updated_at = CURRENT_TIMESTAMP
-            -- run_id should not change
         """
-        # Extract metadata if needed - for now, just store full payload? No, extract known fields.
         metadata = {
             k: v
             for k, v in payload.items()
@@ -355,42 +377,37 @@ class DatabaseManager:
             ]
         }
 
-        if self.conn:
-            self.conn.execute(
-                sql,
-                (
-                    node_id,
-                    run_id,
-                    payload.get("node_nid"),
-                    payload.get("node_type"),
-                    payload.get("task_type"),
-                    payload.get("task_goal"),
-                    initial_status,  # Use initial status
-                    payload.get("layer"),
-                    payload.get("outer_node_id"),
-                    payload.get("root_node_id"),  # Assuming root_node_id is in payload
-                    json.dumps(metadata) if metadata else None,
-                ),
-            )
-            logger.debug(f"Node created/updated in DB: {node_id}")
-        else:
-            logger.error(
-                "Database connection is not available. Cannot store node created event."
-            )
+        self.conn.execute(
+            sql,
+            (
+                node_id,
+                run_id,
+                payload.get("node_nid"),
+                payload.get("node_type"),
+                payload.get("task_type"),
+                payload.get("task_goal"),
+                initial_status,
+                payload.get("layer"),
+                payload.get("outer_node_id"),
+                payload.get("root_node_id"),
+                json.dumps(metadata) if metadata else None,
+            ),
+        )
+        logger.debug(f"Node created/updated in DB: {node_id}")
 
         # If this is the root node (layer 0), update the run record
         if payload.get("layer") == 0:
             update_run_sql = "UPDATE runs SET root_node_id = ? WHERE run_id = ?"
-            if self.conn:
-                self.conn.execute(update_run_sql, (node_id, run_id))
-                logger.info(f"Set root_node_id for run {run_id} to {node_id}")
-            else:
-                logger.error(
-                    "Database connection is not available. Cannot store node created event."
-                )
+            self.conn.execute(update_run_sql, (node_id, run_id))
+            logger.info(f"Set root_node_id for run {run_id} to {node_id}")
 
     def _handle_node_status_changed(self, event: Dict):
         """Updates node status."""
+        if not self.conn:
+            logger.error(
+                "Database connection is not available. Cannot store node status changed event."
+            )
+            return
         payload = event.get("payload", {})
         node_id = payload.get("node_id")
         new_status = payload.get("new_status")
@@ -407,25 +424,23 @@ class DatabaseManager:
             updated_at = CURRENT_TIMESTAMP
         WHERE node_id = ?
         """
-        if self.conn:
-            cursor = self.conn.execute(sql, (new_status, node_id))
-            if cursor.rowcount == 0:
-                logger.warning(
-                    f"Tried to update status for non-existent node_id {node_id} from event {event.get('event_id')}"
-                )
-            else:
-                logger.debug(f"Node status updated in DB: {node_id} -> {new_status}")
-        else:
-            logger.error(
-                "Database connection is not available. Cannot store node status changed event."
+        cursor = self.conn.execute(sql, (new_status, node_id))
+        if cursor.rowcount == 0:
+            logger.warning(
+                f"Tried to update status for non-existent node_id {node_id} from event {event.get('event_id')}"
             )
+        else:
+            logger.debug(f"Node status updated in DB: {node_id} -> {new_status}")
 
     def _handle_node_result_available(self, event: Dict):
         """Updates node result."""
+        if not self.conn:
+            logger.error(
+                "Database connection is not available. Cannot store node result available event."
+            )
+            return
         payload = event.get("payload", {})
         node_id = payload.get("node_id")
-        # Assuming the result is in the payload, maybe under 'result' or 'result_summary'?
-        # Let's assume the *full* result should be stored if available, otherwise summary.
         result_data = payload.get("result", payload.get("result_summary"))
 
         if not node_id:
@@ -440,24 +455,24 @@ class DatabaseManager:
             updated_at = CURRENT_TIMESTAMP
         WHERE node_id = ?
         """
-        if self.conn:
-            cursor = self.conn.execute(
-                sql,
-                (json.dumps(result_data) if result_data is not None else None, node_id),
+        cursor = self.conn.execute(
+            sql,
+            (json.dumps(result_data) if result_data is not None else None, node_id),
+        )
+        if cursor.rowcount == 0:
+            logger.warning(
+                f"Tried to update result for non-existent node_id {node_id} from event {event.get('event_id')}"
             )
-            if cursor.rowcount == 0:
-                logger.warning(
-                    f"Tried to update result for non-existent node_id {node_id} from event {event.get('event_id')}"
-                )
-            else:
-                logger.debug(f"Node result updated in DB: {node_id}")
         else:
-            logger.error(
-                "Database connection is not available. Cannot store node result available event."
-            )
+            logger.debug(f"Node result updated in DB: {node_id}")
 
     def _handle_edge_added(self, event: Dict):
         """Inserts a new edge record."""
+        if not self.conn:
+            logger.error(
+                "Database connection is not available. Cannot store edge added event."
+            )
+            return
         payload = event.get("payload", {})
         run_id = event.get("run_id")
         parent_node_id = payload.get("parent_node_id")
@@ -473,7 +488,6 @@ class DatabaseManager:
         INSERT INTO edges (run_id, parent_node_id, child_node_id, parent_nid, child_nid, metadata)
         VALUES (?, ?, ?, ?, ?, ?)
         """
-        # Extract metadata if needed
         metadata = {
             k: v
             for k, v in payload.items()
@@ -487,60 +501,105 @@ class DatabaseManager:
             ]
         }
 
-        if self.conn:
-            self.conn.execute(
-                sql,
-                (
-                    run_id,
-                    parent_node_id,
-                    child_node_id,
-                    payload.get("parent_node_nid"),
-                    payload.get("child_node_nid"),
-                    json.dumps(metadata) if metadata else None,
-                ),
-            )
-            logger.debug(
-                f"Edge added in DB: {payload.get('parent_node_nid')} -> {payload.get('child_node_nid')}"
-            )
-        else:
+        self.conn.execute(
+            sql,
+            (
+                run_id,
+                parent_node_id,
+                child_node_id,
+                payload.get("parent_node_nid"),
+                payload.get("child_node_nid"),
+                json.dumps(metadata) if metadata else None,
+            ),
+        )
+        logger.debug(
+            f"Edge added in DB: {payload.get('parent_node_nid')} -> {payload.get('child_node_nid')}"
+        )
+
+    def _handle_plan_received(self, event: Dict):
+        """Handle plan_received event by storing the raw plan data in graph_plans table."""
+        if not self.conn:
             logger.error(
-                "Database connection is not available. Cannot store edge added event."
+                "Database connection is not available. Cannot store plan received event."
             )
+            return
+        payload = event.get("payload", {})
+        run_id = event.get("run_id")
+        node_id = payload.get("node_id")
+        raw_plan = payload.get("raw_plan", [])
+
+        if not all([run_id, node_id]):
+            logger.warning(f"Missing required fields in plan_received event: {event}")
+            return
+
+        self.conn.execute(
+            "INSERT INTO graph_plans (run_id, node_id, raw_plan) VALUES (?, ?, ?)",
+            (run_id, node_id, json.dumps(raw_plan)),
+        )
+        logger.debug(f"Plan received stored in DB for node: {node_id}")
 
     def get_latest_run_events(self) -> List[Dict]:
-        """Retrieves all events from the latest run (non-error)."""
-        if not self.conn:
-            return []
-        sql = """
-        SELECT e.event_id, e.run_id, e.event_type, e.timestamp, e.payload
-        FROM events e
-        JOIN (
-            SELECT run_id
-            FROM runs
-            ORDER BY start_time DESC
-            LIMIT 1
-        ) latest_run ON e.run_id = latest_run.run_id
-        ORDER BY e.timestamp ASC, e.id ASC -- Use id as tie-breaker for same timestamp
+        """Get all events from the latest run, ordered by timestamp.
+        This is primarily used for the EventStateManager and broadcasting history.
+        Graph state reconstruction should use get_latest_run_graph.
         """
+        if not self.conn:
+            logger.error(
+                "Database connection is not available. Cannot retrieve events."
+            )
+            return []
         try:
-            cursor = self.conn.execute(sql)
+            # Get the latest run_id
+            cursor = self.conn.execute(
+                "SELECT run_id FROM runs ORDER BY created_at DESC LIMIT 1"
+            )
+            result = cursor.fetchone()
+            if not result:
+                return []
+
+            latest_run_id = result[0]
+
+            # Get all events for this run, ordered primarily by timestamp
+            # Maybe put run_started first, then order by timestamp?
+            cursor = self.conn.execute(
+                """
+                SELECT * FROM events 
+                WHERE run_id = ? 
+                ORDER BY 
+                    CASE event_type WHEN 'run_started' THEN 0 ELSE 1 END, 
+                    timestamp ASC, 
+                    id ASC -- Tie-breaker
+                """,
+                (latest_run_id,),
+            )
+
             events = []
-            for row in cursor:
+            # Use fetchall and process rows for potentially better performance
+            rows = cursor.fetchall()
+            for row_tuple in rows:
+                # Convert row tuple to dictionary using column names
+                row = dict(zip([desc[0] for desc in cursor.description], row_tuple))
                 try:
-                    payload = json.loads(row[4]) if row[4] else {}
+                    payload = json.loads(row["payload"]) if row["payload"] else {}
                     event = {
-                        "event_id": row[0],
-                        "run_id": row[1],
-                        "event_type": row[2],
-                        "timestamp": row[3],
+                        "event_id": row["event_id"],
+                        "run_id": row["run_id"],
+                        "event_type": row["event_type"],
+                        "timestamp": row["timestamp"],
                         "payload": payload,
+                        # Add other base fields if needed, e.g., node_id from event table
+                        "node_id": row.get("node_id"),
                     }
                     events.append(event)
                 except json.JSONDecodeError:
                     logger.warning(
-                        f"Failed to decode payload for event {row[0]} in latest run."
+                        f"Failed to decode payload for event {row['event_id']} in run {latest_run_id}."
                     )
-            logger.info(f"Retrieved {len(events)} events for the latest run.")
+                except KeyError as e:
+                    logger.warning(
+                        f"Missing expected key {e} in event row for run {latest_run_id}: {row}"
+                    )
+
             return events
         except sqlite3.Error as e:
             logger.error(f"Error retrieving latest run events: {e}", exc_info=True)
@@ -549,67 +608,99 @@ class DatabaseManager:
     def get_latest_run_graph(self) -> Tuple[List[Dict], List[Dict]]:
         """Retrieves nodes and edges from the latest run."""
         if not self.conn:
+            logger.error("Database connection is not available. Cannot retrieve graph.")
             return [], []
+
+        latest_run_id = None
+        try:
+            cursor = self.conn.execute(
+                "SELECT run_id FROM runs ORDER BY created_at DESC LIMIT 1"
+            )
+            result = cursor.fetchone()
+            if result:
+                latest_run_id = result[0]
+            else:
+                logger.info("No runs found in the database.")
+                return [], []
+        except sqlite3.Error as e:
+            logger.error(f"Error retrieving latest run_id: {e}", exc_info=True)
+            return [], []
+
         nodes_sql = """
-        SELECT n.node_id, n.run_id, n.node_nid, n.node_type, n.task_type, n.task_goal, n.status, n.layer, n.outer_node_id, n.root_node_id, n.result, n.metadata
-        FROM nodes n
-        JOIN (
-             SELECT run_id FROM runs ORDER BY start_time DESC LIMIT 1
-        ) latest_run ON n.run_id = latest_run.run_id
+        SELECT * FROM nodes WHERE run_id = ? ORDER BY layer, node_nid
         """
         edges_sql = """
-        SELECT e.parent_node_id, e.child_node_id, e.parent_nid, e.child_nid, e.metadata
-        FROM edges e
-        JOIN (
-             SELECT run_id FROM runs ORDER BY start_time DESC LIMIT 1
-        ) latest_run ON e.run_id = latest_run.run_id
+        SELECT * FROM edges WHERE run_id = ? ORDER BY created_at
         """
         nodes = []
         edges = []
         try:
             # Fetch nodes
-            cursor_nodes = self.conn.execute(nodes_sql)
+            cursor_nodes = self.conn.execute(nodes_sql, (latest_run_id,))
             node_cols = [desc[0] for desc in cursor_nodes.description]
-            for row in cursor_nodes:
-                node = dict(zip(node_cols, row))
+            for row_tuple in cursor_nodes.fetchall():
+                node = dict(zip(node_cols, row_tuple))
                 # Decode JSON fields
                 if node.get("result"):
-                    node["result"] = json.loads(node["result"])
+                    try:
+                        node["result"] = json.loads(node["result"])
+                    except json.JSONDecodeError:
+                        logger.warning(
+                            f"Failed to decode result JSON for node {node['node_id']}"
+                        )
+                        node["result"] = (
+                            None  # Or keep as string? Set to None for consistency.
+                        )
                 if node.get("metadata"):
-                    node["metadata"] = json.loads(node["metadata"])
+                    try:
+                        node["metadata"] = json.loads(node["metadata"])
+                    except json.JSONDecodeError:
+                        logger.warning(
+                            f"Failed to decode metadata JSON for node {node['node_id']}"
+                        )
+                        node["metadata"] = {}  # Default to empty dict
                 nodes.append(node)
 
             # Fetch edges
-            cursor_edges = self.conn.execute(edges_sql)
+            cursor_edges = self.conn.execute(edges_sql, (latest_run_id,))
             edge_cols = [desc[0] for desc in cursor_edges.description]
-            for row in cursor_edges:
-                edge = dict(zip(edge_cols, row))
+            for row_tuple in cursor_edges.fetchall():
+                edge = dict(zip(edge_cols, row_tuple))
                 # Decode JSON fields
                 if edge.get("metadata"):
-                    edge["metadata"] = json.loads(edge["metadata"])
+                    try:
+                        edge["metadata"] = json.loads(edge["metadata"])
+                    except json.JSONDecodeError:
+                        logger.warning(
+                            f"Failed to decode metadata JSON for edge {edge['id']}"
+                        )
+                        edge["metadata"] = {}  # Default to empty dict
                 edges.append(edge)
 
             logger.info(
-                f"Retrieved {len(nodes)} nodes and {len(edges)} edges for the latest run."
+                f"Retrieved {len(nodes)} nodes and {len(edges)} edges for the latest run ({latest_run_id})."
             )
             return nodes, edges
         except sqlite3.Error as e:
-            logger.error(f"Error retrieving latest run graph: {e}", exc_info=True)
+            logger.error(
+                f"Error retrieving latest run graph for run {latest_run_id}: {e}",
+                exc_info=True,
+            )
             return [], []
-        except json.JSONDecodeError as e:
-            logger.error(f"Error decoding JSON from graph data: {e}", exc_info=True)
-            # Return partially loaded data? Or empty? Let's return empty for safety.
-            return [], []
+        except (
+            json.JSONDecodeError
+        ) as e:  # Should be caught per-field now, but keep as safety net
+            logger.error(
+                f"Error decoding JSON from graph data for run {latest_run_id}: {e}",
+                exc_info=True,
+            )
+            return [], []  # Return empty for safety
 
     def close(self):
         """Closes the database connection."""
         if self.conn:
             try:
-                # Commit any pending changes and optimize before closing
-                self.conn.commit()
-                # Optional: Optimize DB on close? Might be slow.
-                # logger.info("Optimizing database before closing...")
-                # self.conn.execute("PRAGMA optimize;")
+                self.conn.commit()  # Ensure any final changes are committed
                 self.conn.close()
                 self.conn = None
                 logger.info("Database connection closed successfully.")
@@ -617,16 +708,23 @@ class DatabaseManager:
                 logger.error(f"Error closing database connection: {e}", exc_info=True)
 
 
-# Example usage (for testing)
+# Example usage (for testing) - Keep this updated
 if __name__ == "__main__":
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s",
     )
-    db_manager = DatabaseManager("test_run_events.db")
+    # Use a unique DB for testing each run? Or clear it?
+    test_db_path = "test_run_events.db"
+    # If the test DB exists, remove it for a clean run
+    db_file = Path(test_db_path)
+    if db_file.exists():
+        db_file.unlink()
+
+    db_manager = DatabaseManager(test_db_path)
 
     # Simulate events
-    run_id = "run-" + Path("test_run_events.db").stem  # Example run ID
+    run_id = "test-run-123"
 
     run_start_event = {
         "event_id": "evt-run-start",
@@ -668,6 +766,13 @@ if __name__ == "__main__":
             "status": "READY",
         },
     }
+    plan_received_event = {
+        "event_id": "evt-plan-recv",
+        "run_id": run_id,
+        "event_type": "plan_received",
+        "timestamp": "2024-01-01T10:00:02.5Z",
+        "payload": {"node_id": "node-1", "raw_plan": [{"id": 1, "goal": "Sub Goal"}]},
+    }
     edge_added_event = {
         "event_id": "evt-edge-add",
         "run_id": run_id,
@@ -699,6 +804,7 @@ if __name__ == "__main__":
     db_manager.store_event(run_start_event)
     db_manager.store_event(node1_created_event)
     db_manager.store_event(node2_created_event)
+    db_manager.store_event(plan_received_event)  # Store plan event
     db_manager.store_event(edge_added_event)
     db_manager.store_event(node2_status_event)
     db_manager.store_event(run_finish_event)
@@ -707,16 +813,15 @@ if __name__ == "__main__":
     logger.info("Retrieving latest run events...")
     latest_events = db_manager.get_latest_run_events()
     logger.info(f"Retrieved {len(latest_events)} events.")
-    # for event in latest_events: logger.info(event)
+    # for event in latest_events: logger.info(json.dumps(event, indent=2))
 
     logger.info("Retrieving latest run graph...")
     latest_nodes, latest_edges = db_manager.get_latest_run_graph()
     logger.info(f"Retrieved {len(latest_nodes)} nodes and {len(latest_edges)} edges.")
     # logger.info("Nodes:")
-    # for node in latest_nodes: logger.info(node)
+    # for node in latest_nodes: logger.info(json.dumps(node, indent=2))
     # logger.info("Edges:")
-    # for edge in latest_edges: logger.info(edge)
+    # for edge in latest_edges: logger.info(json.dumps(edge, indent=2))
 
     db_manager.close()
-    # Clean up test db
-    # Path("test_run_events.db").unlink()
+    logger.info(f"Test completed. Database saved to {test_db_path}")

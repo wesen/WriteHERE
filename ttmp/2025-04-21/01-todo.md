@@ -3,6 +3,11 @@ WARMUP :
 - [ ] Refactor the styling of events in ui-react since a lot of html / styling
       is duplicated (for example eventTypeBadgeVariant or eventTypeConfig)
 
+  - [ ] Fix white font in the node detail modal
+  - [ ] show the NID in the events list
+
+- outer node id should be reflected in the graph as a parent relation ship maybe?
+
 ## BUGS / issues
 
 - [x] Weird issues where a task gets cancelled and no redis events are received
@@ -14,7 +19,7 @@ WARMUP :
 - [ ] Some nodes don't seem to have parents
 - [ ] What about N/A status of new nodes?
 - [x] Add run_id to the run started event
-- [ ] First node never has a node_added event
+- [x] First node never has a node_added event
 
 ## TODO menial
 

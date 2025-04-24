@@ -1,25 +1,29 @@
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 import asyncio
 import json
 
 
 @dataclass
 class NodeState:
-    id: str
-    nid: str
-    type: str  # PLAN_NODE or EXECUTE_NODE
-    goal: str
-    layer: int
-    taskType: str  # COMPOSITION, REASONING, or RETRIEVAL
-    status: Optional[str] = None
+    id: str  # node_id from DB
+    nid: str  # node_nid from DB
+    type: str  # node_type from DB
+    goal: str  # task_goal from DB
+    layer: int  # layer from DB
+    taskType: str  # task_type from DB
+    status: Optional[str] = None  # status from DB
+    # Add other fields mirrored from DB if needed by UI state
+    # e.g., outer_node_id, root_node_id? For now, keep it minimal.
 
 
 @dataclass
 class EdgeState:
-    id: str  # Computed as f"{parent}-{child}"
-    parent: str
-    child: str
+    id: str  # Computed as f"{parent_node_id}-{child_node_id}"
+    parent: str  # parent_node_id from DB
+    child: str  # child_node_id from DB
+    # Add other fields mirrored from DB if needed
+    # e.g., parent_nid, child_nid?
 
 
 @dataclass
@@ -44,21 +48,63 @@ class GraphStateManager:
     """
     Manages server-side graph state that mirrors the Redux store structure in the UI.
     Processes events to maintain state and provides methods to query the state.
+    Can also load initial state directly from database records.
     """
 
     def __init__(self):
         self.state = GraphState()
         self._lock = asyncio.Lock()
 
+    async def load_state_from_db(self, nodes_data: List[Dict], edges_data: List[Dict]):
+        """Loads the initial graph state directly from database node/edge records."""
+        async with self._lock:
+            # Clear existing state
+            self.state = GraphState()
+
+            # Process nodes
+            for node_record in nodes_data:
+                node_id = node_record.get("node_id")
+                if not node_id:
+                    continue
+
+                node = NodeState(
+                    id=node_id,
+                    nid=node_record.get("node_nid", ""),
+                    type=node_record.get("node_type", ""),
+                    goal=node_record.get("task_goal", ""),
+                    layer=node_record.get("layer", 0),
+                    taskType=node_record.get("task_type", ""),
+                    status=node_record.get("status"),  # Status should be present
+                )
+                self.state.nodes.ids.append(node.id)
+                self.state.nodes.entities[node.id] = node
+
+            # Process edges
+            for edge_record in edges_data:
+                parent_id = edge_record.get("parent_node_id")
+                child_id = edge_record.get("child_node_id")
+                if not parent_id or not child_id:
+                    continue
+
+                edge_id = f"{parent_id}-{child_id}"
+                edge = EdgeState(
+                    id=edge_id,
+                    parent=parent_id,
+                    child=child_id,
+                )
+                self.state.edges.ids.append(edge.id)
+                self.state.edges.entities[edge.id] = edge
+
     async def process_event(self, event: dict):
         """
         Process an event to update the graph state.
-        Only processes events that affect the graph structure.
+        Only processes events that affect the graph structure or node status *after* initial load.
         """
         event_type = event.get("event_type")
         payload = event.get("payload", {})
 
         async with self._lock:
+            # run_started should still clear state if a new run begins *live*
             if event_type == "run_started":
                 self.state = GraphState()  # Clear the graph state
             elif event_type == "node_created":
@@ -67,10 +113,12 @@ class GraphStateManager:
                 await self._handle_node_status_changed(payload)
             elif event_type == "edge_added":
                 await self._handle_edge_added(payload)
+            # No need to handle plan_received, node_added, inner_graph_built for state
 
     async def _handle_node_created(self, payload: dict):
-        """Handle a node_created event by adding a new node to the state."""
+        """Handle a node_created event by adding a new node to the state (idempotent)."""
         node_id = payload.get("node_id")
+        # Only add if it doesn't exist (might happen if events arrive out of order slightly)
         if not node_id or node_id in self.state.nodes.entities:
             return
 
@@ -81,13 +129,18 @@ class GraphStateManager:
             goal=payload.get("task_goal", ""),
             layer=payload.get("layer", 0),
             taskType=payload.get("task_type", ""),
+            status=payload.get(
+                "initial_status", "READY"
+            ),  # Use initial status from event if available
         )
         await self._add_node(node)
 
     async def _handle_node_status_changed(self, payload: dict):
         """Handle a node_status_changed event by updating a node's status."""
         node_id = payload.get("node_id")
+        # Check if node exists; it should if created event was processed or loaded
         if not node_id or node_id not in self.state.nodes.entities:
+            # Log a warning? Could happen if status change arrives before creation event
             return
 
         new_status = payload.get("new_status")
@@ -96,13 +149,14 @@ class GraphStateManager:
             node.status = new_status
 
     async def _handle_edge_added(self, payload: dict):
-        """Handle an edge_added event by adding a new edge to the state."""
+        """Handle an edge_added event by adding a new edge to the state (idempotent)."""
         parent_id = payload.get("parent_node_id")
         child_id = payload.get("child_node_id")
         if not parent_id or not child_id:
             return
 
         edge_id = f"{parent_id}-{child_id}"
+        # Only add if it doesn't exist
         if edge_id in self.state.edges.entities:
             return
 
@@ -114,13 +168,13 @@ class GraphStateManager:
         await self._add_edge(edge)
 
     async def _add_node(self, node: NodeState):
-        """Add a node to the graph state."""
+        """Add a node to the graph state if not present."""
         if node.id not in self.state.nodes.ids:
             self.state.nodes.ids.append(node.id)
             self.state.nodes.entities[node.id] = node
 
     async def _add_edge(self, edge: EdgeState):
-        """Add an edge to the graph state."""
+        """Add an edge to the graph state if not present."""
         if edge.id not in self.state.edges.ids:
             self.state.edges.ids.append(edge.id)
             self.state.edges.entities[edge.id] = edge
@@ -175,7 +229,7 @@ class GraphStateManager:
             for edge_id, edge in self.state.edges.entities.items()
         }
 
-    def _node_to_dict(self, node: NodeState):
+    def _node_to_dict(self, node: NodeState) -> Dict[str, Any]:
         """Convert a NodeState to a dictionary."""
         node_dict = {
             "id": node.id,
@@ -189,7 +243,7 @@ class GraphStateManager:
             node_dict["status"] = node.status
         return node_dict
 
-    def _edge_to_dict(self, edge: EdgeState):
+    def _edge_to_dict(self, edge: EdgeState) -> Dict[str, Any]:
         """Convert an EdgeState to a dictionary."""
         return {
             "id": edge.id,
