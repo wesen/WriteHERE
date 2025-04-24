@@ -2,6 +2,7 @@ import json
 import traceback
 from datetime import datetime, timezone
 import time
+from typing import Optional
 
 from loguru import logger
 
@@ -16,6 +17,7 @@ from recursive.utils.event_bus import (
     emit_run_finished,
     emit_run_error,
 )
+from recursive.common.context import ExecutionContext
 
 
 def story_writing(
@@ -26,6 +28,7 @@ def story_writing(
     done_flag_file,
     global_use_model,
     nodes_json_file=None,
+    ctx: Optional[ExecutionContext] = None,
 ):
     # Statistics for run_finished event
     stats = {
@@ -162,7 +165,7 @@ def story_writing(
             config=event_config,
             run_mode="story",
             timestamp_utc=start_time_utc,
-            run_id=None,  # run_id is added by event bus
+            ctx=ctx,
         )
 
         import pathlib
@@ -258,6 +261,7 @@ def story_writing(
             total_tool_calls=stats["total_tool_calls"],
             token_usage_summary=stats["token_usage"],
             node_statistics=stats["node_statistics"],
+            ctx=ctx,
         )
 
     except Exception as e:
@@ -273,5 +277,6 @@ def story_writing(
             error_message=str(e),
             stack_trace=traceback.format_exc(),
             context=error_context,
+            ctx=ctx,
         )
         raise  # Re-raise the exception after logging

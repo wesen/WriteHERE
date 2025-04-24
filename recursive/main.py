@@ -4,7 +4,7 @@ import uuid  # For run ID
 
 from recursive.report_writing import report_writing
 from recursive.story_writing import story_writing
-from recursive.utils.event_bus import set_run_id
+from recursive.common.context import ExecutionContext
 
 # import agents to register them
 import recursive.agent.dummies
@@ -64,8 +64,10 @@ if __name__ == "__main__":
 
     # Generate a unique ID for this agent run
     current_run_id = str(uuid.uuid4())
-    set_run_id(current_run_id)
     print(f"Agent Run ID: {current_run_id}")
+
+    # Create initial execution context
+    initial_ctx = ExecutionContext(run_id=current_run_id)
 
     if args.mode == "story":
         story_writing(
@@ -76,6 +78,7 @@ if __name__ == "__main__":
             args.done_flag_file,
             args.model,
             nodes_json_file=args.nodes_json_file,
+            ctx=initial_ctx,
         )
     else:
         report_writing(
@@ -88,4 +91,5 @@ if __name__ == "__main__":
             args.engine_backend,
             nodes_json_file=args.nodes_json_file,
             today_date=args.today_date,
+            ctx=initial_ctx,
         )

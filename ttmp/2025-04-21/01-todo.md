@@ -5,8 +5,11 @@ WARMUP :
 
 ## BUGS / issues
 
-- [ ] Weird issues where a task gets cancelled and no redis events are received
-- [ ] SOurcemaps in vite don't get loaded
+- [x] Weird issues where a task gets cancelled and no redis events are received
+- [.] SOurcemaps in vite don't get loade (not fixing for now)
+
+- [ ] Add run_id to the run started event
+- [ ] Add run_id to the events themselves
 
 - [ ] Some nodes don't seem to have parents
 - [ ] What about N/A status of new nodes?

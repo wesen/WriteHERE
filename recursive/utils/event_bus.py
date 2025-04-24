@@ -121,14 +121,6 @@ bus = EventBus(redis_client, EVENT_STREAM_NAME, EVENT_STREAM_MAXLEN)
 # --- Helper Functions (Optional but Recommended) ---
 # These make emitting specific events cleaner at the call site.
 
-_current_run_id: Optional[str] = None  # Module-level variable to hold the run ID
-
-
-def set_run_id(run_id: str):
-    """Sets a global run ID for all subsequent events in this process."""
-    global _current_run_id
-    _current_run_id = run_id
-
 
 def _create_event(
     event_type: EventType, payload: Dict[str, Any], ctx: Optional[ExecutionContext]
@@ -136,9 +128,13 @@ def _create_event(
     """Factory to create event with common fields and context enrichment."""
     # Start with the provided payload
     final_payload = payload.copy()
+    event_run_id: Optional[str] = None  # Default to None
 
     # Enrich payload with context data if ctx is provided
     if ctx:
+        # Extract run_id first
+        event_run_id = getattr(ctx, "run_id", None)
+
         # Define the fields to potentially add from context
         context_fields = [
             "step",
@@ -155,7 +151,7 @@ def _create_event(
             if field_value is not None and field_name not in final_payload:
                 final_payload[field_name] = field_value
 
-    return Event(event_type=event_type, payload=final_payload, run_id=_current_run_id)
+    return Event(event_type=event_type, payload=final_payload, run_id=event_run_id)
 
 
 def emit_step_started(
@@ -417,24 +413,21 @@ def emit_node_result_available(
 
 
 def emit_run_started(
-    input_data: str,
+    input_data: Dict[str, Any],
     config: Dict[str, Any],
     run_mode: str,
     timestamp_utc: datetime,
-    run_id: str,  # Require run_id for this event
+    ctx: Optional[ExecutionContext] = None,
 ):
     """Emits an event when a new run starts."""
-    # Set the global run ID when starting a run
-    set_run_id(run_id)
-
     payload: Dict[str, Any] = {
-        "input_data": input_data,  # e.g., filename or initial query
+        "input_data": input_data,  # Use the provided dict directly
         "config": config,  # Selected configuration items
         "run_mode": run_mode,
         "timestamp_utc": timestamp_utc.isoformat() + "Z",  # Already UTC from caller
     }
-    # Note: _create_event will add the run_id
-    bus.publish(_create_event(EventType.RUN_STARTED, payload, ctx=None))
+    # Note: _create_event will extract run_id from ctx
+    bus.publish(_create_event(EventType.RUN_STARTED, payload, ctx=ctx))
 
 
 def emit_run_finished(
@@ -446,6 +439,7 @@ def emit_run_finished(
     token_usage_summary: Dict[str, int],
     node_statistics: Dict[str, Any],
     search_statistics: Optional[Dict[str, int]] = None,
+    ctx: Optional[ExecutionContext] = None,
 ):
     """Emits an event when a run completes successfully with summary statistics.
 
@@ -472,7 +466,7 @@ def emit_run_finished(
     if search_statistics is not None:
         payload["search_statistics"] = search_statistics
 
-    bus.publish(_create_event(EventType.RUN_FINISHED, payload, ctx=None))
+    bus.publish(_create_event(EventType.RUN_FINISHED, payload, ctx=ctx))
 
 
 def emit_run_error(
@@ -482,6 +476,7 @@ def emit_run_error(
     context: Dict[str, Any],
     node_id: Optional[str] = None,
     step: Optional[int] = None,
+    ctx: Optional[ExecutionContext] = None,
 ):
     """Emits an event when a run encounters an unrecoverable error.
 
@@ -505,4 +500,4 @@ def emit_run_error(
     if step is not None:
         payload["step"] = step
 
-    bus.publish(_create_event(EventType.RUN_ERROR, payload, ctx=None))
+    bus.publish(_create_event(EventType.RUN_ERROR, payload, ctx=ctx))

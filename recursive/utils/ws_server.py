@@ -4,7 +4,7 @@ import os
 import threading
 import logging  # Import logging
 import traceback  # Import traceback
-from typing import Set, Optional
+from typing import Set, Optional, List, Dict
 from pathlib import Path  # Added for path manipulation
 
 import redis
@@ -24,6 +24,9 @@ from recursive.utils.graph_state_manager import GraphStateManager
 # Import the new EventStateManager
 from recursive.utils.event_state_manager import EventStateManager
 
+# Import the new DatabaseManager
+from recursive.utils.db_manager import DatabaseManager
+
 # --- Configuration ---
 # Reuse stream name from event_bus or define separately
 EVENT_STREAM_NAME = os.getenv("EVENT_STREAM", "agent_events")
@@ -32,6 +35,8 @@ REDIS_URL = os.getenv(
 )  # Use URL format for async client
 WS_HOST = os.getenv("WS_HOST", "0.0.0.0")
 WS_PORT = int(os.getenv("WS_PORT", 9999))
+SQLITE_DB_PATH = os.getenv("SQLITE_DB_PATH", "runs/events.db")
+RELOAD_LATEST_SESSION = os.getenv("RELOAD_LATEST_SESSION", "false").lower() == "true"
 
 # Calculate path to the React build directory relative to this file
 # ws_server.py -> utils -> recursive -> ROOT -> ui-react/dist
@@ -60,8 +65,21 @@ logging.getLogger().handlers[0].setFormatter(logging.Formatter(LOG_FORMAT))
 logger = logging.getLogger(__name__)
 
 
+# --- FastAPI App State --- (Moved initialization here)
+class AppState:
+    def __init__(self):
+        self.db_manager: Optional[DatabaseManager] = None
+        self.redis_listener_task: Optional[asyncio.Task] = None
+        self.latest_events_for_broadcast: List[Dict] = (
+            []
+        )  # Only for sending history to new clients
+
+
+app_state = AppState()
+
+
 async def redis_listener(redis_client: aredis.Redis):
-    """Listens to Redis stream and broadcasts messages to connected websockets."""
+    """Listens to Redis stream, stores events in DB, updates state managers, and broadcasts."""
     last_id = "$"  # Start reading new messages
     logger.info(f"Starting Redis listener on stream '{EVENT_STREAM_NAME}'...")
     try:  # Outer try to catch errors during the loop itself
@@ -90,26 +108,36 @@ async def redis_listener(redis_client: aredis.Redis):
                             last_id = message_id
                             logger.info(f"Processing message ID: {message_id}")
                             # Assuming the event JSON is stored under 'json_payload' key
+                            # Important: The event structure here must match what's expected by state managers and DB
+                            # It should contain event_id, run_id, event_type, timestamp, payload
                             if "json_payload" in fields:
-                                message_data = fields["json_payload"]
+                                message_data_str = fields["json_payload"]
                                 logger.info(
-                                    f"Message payload found (length: {len(message_data)})"
+                                    f"Message payload found (length: {len(message_data_str)})"
                                 )
 
-                                # Process the event for state management
+                                # Process the event for state management and DB storage
                                 try:
-                                    event = json.loads(message_data)
+                                    event = json.loads(message_data_str)
                                     event_type = event.get("event_type", "UNKNOWN")
                                     logger.info(f"Processing event: {event_type}")
 
-                                    # Handle run_started event specially
+                                    # --- Store Event in Database --- (Do this first)
+                                    if app_state.db_manager:
+                                        app_state.db_manager.store_event(event)
+                                    # --------------------------------
+
+                                    # --- Update State Managers --- (Process the event)
+                                    # Handle run_started event specially for clearing state
                                     if event_type == "run_started":
                                         logger.info(
                                             "Event is 'run_started', clearing events history."
                                         )
                                         await event_manager.clear_events()
+                                        # Optionally clear graph manager too? Depends on desired behavior.
+                                        # await graph_manager.clear_state() # Maybe needed if runs aren't isolated
 
-                                    # Add event to manager
+                                    # Add event to EventStateManager
                                     logger.info(
                                         f"Adding event to EventStateManager: {event_type}"
                                     )
@@ -121,16 +149,18 @@ async def redis_listener(redis_client: aredis.Redis):
                                     )
                                     await graph_manager.process_event(event)
                                     logger.info(
-                                        f"Finished processing event: {event_type}"
+                                        f"Finished processing event for state managers: {event_type}"
                                     )
+                                    # -----------------------------
+
                                 except Exception as e:
                                     logger.error(
-                                        f"Error processing event for state management: {e}",
+                                        f"Error processing event for state/DB: {e}",
                                         exc_info=True,
                                     )
                                     # traceback.print_exc() # Use logger's exc_info instead
 
-                                # Broadcast to all connected clients
+                                # --- Broadcast to WebSocket Clients --- (Send original string)
                                 logger.info(
                                     f"Broadcasting message to {len(active_connections)} active connection(s)..."
                                 )
@@ -138,7 +168,8 @@ async def redis_listener(redis_client: aredis.Redis):
                                 disconnected_peers = set()
                                 for connection in list(active_connections):
                                     try:
-                                        await connection.send_text(message_data)
+                                        # Send the original JSON string received from Redis
+                                        await connection.send_text(message_data_str)
                                     except WebSocketDisconnect:
                                         disconnected_peers.add(connection)
                                         logger.warning(
@@ -160,6 +191,7 @@ async def redis_listener(redis_client: aredis.Redis):
                                     )
                                     for peer in disconnected_peers:
                                         active_connections.discard(peer)
+                                # ---------------------------------------
                             else:
                                 logger.warning(
                                     f"Received message {message_id} without 'json_payload' field."
@@ -182,6 +214,12 @@ async def redis_listener(redis_client: aredis.Redis):
             except asyncio.CancelledError:
                 logger.warning("Redis listener task explicitly cancelled.")
                 raise  # Re-raise CancelledError to ensure the task actually stops
+            except json.JSONDecodeError as e:
+                logger.error(
+                    f"Failed to decode JSON payload from Redis: {e}", exc_info=True
+                )
+                # Skip this message and continue
+                await asyncio.sleep(0.1)  # Prevent tight loop on continuous bad data
             except BaseException as e:  # Catch BaseException last
                 # Log the full traceback for unexpected errors
                 logger.error(
@@ -211,21 +249,83 @@ async def redis_listener(redis_client: aredis.Redis):
 
 
 async def startup_event():
-    """Creates Redis connection and starts the listener task."""
+    """Initializes DB, Redis connection, loads history (optional), starts listener."""
     logger.info("WebSocket server starting up...")
     try:
+        # --- Initialize Database Manager ---
+        logger.info(f"Initializing database at {SQLITE_DB_PATH}")
+        app_state.db_manager = DatabaseManager(SQLITE_DB_PATH)
+        logger.info("Database initialized successfully.")
+        # ---------------------------------
+
+        # --- Reload State from DB (Optional) ---
+        if RELOAD_LATEST_SESSION:
+            logger.info(
+                "RELOAD_LATEST_SESSION is true. Attempting to load latest session..."
+            )
+            if app_state.db_manager:
+                historical_events = app_state.db_manager.get_latest_run_events()
+                if historical_events:
+                    logger.info(
+                        f"Loaded {len(historical_events)} events from the latest run in DB."
+                    )
+
+                    # Store for broadcasting to new clients
+                    app_state.latest_events_for_broadcast = historical_events
+
+                    # --- Replay Events into State Managers ---
+                    logger.info("Replaying historical events into state managers...")
+                    # Clear existing state first (important!)
+                    await event_manager.clear_events()
+                    # Assuming graph_manager is implicitly cleared or managed per-run
+                    # If not, uncomment: await graph_manager.clear_state()
+
+                    processed_count = 0
+                    for event in historical_events:
+                        try:
+                            event_type = event.get("event_type", "UNKNOWN")
+                            # Add to event manager
+                            await event_manager.add_event(event)
+                            # Process for graph manager
+                            await graph_manager.process_event(event)
+                            processed_count += 1
+                        except Exception as e:
+                            logger.error(
+                                f"Error replaying event {event.get('event_id')}: {e}",
+                                exc_info=True,
+                            )
+
+                    logger.info(
+                        f"Finished replaying {processed_count}/{len(historical_events)} events."
+                    )
+                    # -------------------------------------------
+                else:
+                    logger.info(
+                        "No historical events found for the latest run in the database."
+                    )
+                    app_state.latest_events_for_broadcast = []
+            else:
+                logger.error("Database manager not initialized, cannot reload session.")
+        else:
+            logger.info("RELOAD_LATEST_SESSION is false. Starting with empty state.")
+            app_state.latest_events_for_broadcast = []
+        # ---------------------------------------
+
+        # --- Connect to Redis and Start Listener ---
         logger.info(f"Attempting to connect to Redis at {REDIS_URL}...")
         redis_client = aredis.from_url(REDIS_URL, decode_responses=True)
         logger.info("Pinging Redis...")
         await redis_client.ping()  # Verify connection
         logger.info(f"Async Redis connected successfully to {REDIS_URL}")
+
         # Start the Redis listener task in the background
         logger.info("Creating Redis listener task...")
-        # Store the task handle if we need to explicitly cancel it later
-        app.state.redis_listener_task = asyncio.create_task(
+        app_state.redis_listener_task = asyncio.create_task(
             redis_listener(redis_client), name="RedisListenerTask"
         )
         logger.info("Redis listener task created.")
+        # -----------------------------------------
+
     except aredis.exceptions.ConnectionError as e:
         logger.critical(
             f"FATAL: Could not connect to Redis at {REDIS_URL} on startup: {e}",
@@ -234,32 +334,43 @@ async def startup_event():
         # Optionally, exit or handle this critical failure
     except Exception as e:
         logger.critical(
-            f"FATAL: Unexpected error during startup Redis connection: {e}",
+            f"FATAL: Unexpected error during startup: {e}",
             exc_info=True,
         )
+        # Ensure DB connection is closed if startup fails partially
+        if app_state.db_manager:
+            app_state.db_manager.close()
+        raise  # Re-raise exception to prevent server starting in bad state
 
 
 # Define a shutdown event handler (optional but good practice)
 async def shutdown_event():
     logger.info("WebSocket server shutting down...")
-    if hasattr(app.state, "redis_listener_task") and app.state.redis_listener_task:
-        task = app.state.redis_listener_task
-        if not task.done():
-            logger.info("Attempting to cancel Redis listener task...")
-            task.cancel()
-            try:
-                # Give the task a moment to finish after cancellation
-                await asyncio.wait_for(task, timeout=5.0)
-            except asyncio.CancelledError:
-                logger.info("Redis listener task successfully cancelled.")
-            except asyncio.TimeoutError:
-                logger.warning("Redis listener task did not cancel within timeout.")
-            except Exception as e:
-                logger.error(
-                    f"Error during Redis listener task shutdown: {e}", exc_info=True
-                )
-        else:
-            logger.info("Redis listener task was already done.")
+    # --- Cancel Redis Listener Task ---
+    if app_state.redis_listener_task and not app_state.redis_listener_task.done():
+        logger.info("Attempting to cancel Redis listener task...")
+        app_state.redis_listener_task.cancel()
+        try:
+            # Give the task a moment to finish after cancellation
+            await asyncio.wait_for(app_state.redis_listener_task, timeout=5.0)
+        except asyncio.CancelledError:
+            logger.info("Redis listener task successfully cancelled.")
+        except asyncio.TimeoutError:
+            logger.warning("Redis listener task did not cancel within timeout.")
+        except Exception as e:
+            logger.error(
+                f"Error during Redis listener task shutdown: {e}", exc_info=True
+            )
+    elif app_state.redis_listener_task:
+        logger.info("Redis listener task was already done.")
+    # ---------------------------------
+
+    # --- Close Database Connection ---
+    if app_state.db_manager:
+        logger.info("Closing database connection...")
+        app_state.db_manager.close()
+    # -------------------------------
+
     # Add any other cleanup here
     logger.info("WebSocket server shutdown complete.")
 
@@ -332,28 +443,30 @@ if assets_dir.exists() and assets_dir.is_dir():
 
 @app.get("/api/events")
 async def get_events(limit: Optional[int] = None):
-    """Return historical events with optional limit."""
-    return event_manager.get_state()
+    """Return historical events managed by EventStateManager."""
+    # TODO: Add limit support to EventStateManager?
+    logger.info(f"GET /api/events requested (limit: {limit})")
+    return event_manager.get_state()  # Returns all currently managed events
 
 
 @app.get("/api/graph")
 async def get_graph():
-    """Return complete graph state matching Redux store structure."""
-    logger.info("GET /api/graph requested")  # Added logging
+    """Return complete graph state from GraphStateManager."""
+    logger.info("GET /api/graph requested")
     return graph_manager.get_graph_state()
 
 
 @app.get("/api/graph/nodes")
 async def get_nodes():
-    """Return all nodes."""
-    logger.info("GET /api/graph/nodes requested")  # Added logging
+    """Return all nodes from GraphStateManager."""
+    logger.info("GET /api/graph/nodes requested")
     return {"nodes": graph_manager.get_nodes()}
 
 
 @app.get("/api/graph/nodes/{node_id}")
 async def get_node(node_id: str):
-    """Return specific node details."""
-    logger.info(f"GET /api/graph/nodes/{node_id} requested")  # Added logging
+    """Return specific node details from GraphStateManager."""
+    logger.info(f"GET /api/graph/nodes/{node_id} requested")
     node = graph_manager.get_node(node_id)
     if node:
         return node
@@ -362,37 +475,71 @@ async def get_node(node_id: str):
 
 @app.get("/api/graph/edges")
 async def get_edges():
-    """Return all edges."""
-    logger.info("GET /api/graph/edges requested")  # Added logging
+    """Return all edges from GraphStateManager."""
+    logger.info("GET /api/graph/edges requested")
     return {"edges": graph_manager.get_edges()}
 
 
 @app.get("/api/graph/edges/{edge_id}")
 async def get_edge(edge_id: str):
-    """Return specific edge details."""
-    logger.info(f"GET /api/graph/edges/{edge_id} requested")  # Added logging
+    """Return specific edge details from GraphStateManager."""
+    # Note: GraphStateManager might not store edges by a separate edge_id,
+    # but rather implicitly by parent/child node IDs.
+    # This endpoint might need adjustment based on GraphStateManager capabilities.
+    logger.info(f"GET /api/graph/edges/{edge_id} requested")
+    # Assuming get_edge exists, otherwise adapt
     edge = graph_manager.get_edge(edge_id)
     if edge:
         return edge
-    raise HTTPException(status_code=404, detail="Edge not found")
+    # If edges are identified differently, adjust the logic or endpoint.
+    # Example: maybe search by parent/child ID pair?
+    logger.warning(
+        f"Edge lookup by single ID '{edge_id}' might not be supported by GraphStateManager."
+    )
+    raise HTTPException(
+        status_code=404, detail="Edge not found or lookup method not supported"
+    )
 
 
 @app.websocket("/ws/events")
 async def websocket_endpoint(websocket: WebSocket):
-    """Handles WebSocket connections."""
+    """Handles WebSocket connections, sends history if available."""
     await websocket.accept()
     logger.info(f"Client connected: {websocket.client}")
     active_connections.add(websocket)
+
     try:
-        # Keep the connection alive, listening for disconnect
+        # --- Send Historical Events if Loaded ---
+        if RELOAD_LATEST_SESSION and app_state.latest_events_for_broadcast:
+            logger.info(
+                f"Sending {len(app_state.latest_events_for_broadcast)} historical events to new client {websocket.client}"
+            )
+            for event in app_state.latest_events_for_broadcast:
+                try:
+                    # Send the event data (already a dict from DB) as JSON string
+                    await websocket.send_text(json.dumps(event))
+                except WebSocketDisconnect:
+                    raise  # Re-raise to be caught by outer handler
+                except Exception as e:
+                    logger.error(
+                        f"Error sending historical event to {websocket.client}: {e}",
+                        exc_info=True,
+                    )
+                    # Decide whether to continue or disconnect the client
+            logger.info(f"Finished sending historical events to {websocket.client}")
+        # ---------------------------------------
+
+        # --- Keep Connection Alive --- (Listen for disconnect)
         while True:
             # We don't expect messages from client in this simple broadcast setup
             # But keep receiving to detect disconnects
             # Set a timeout or handle potential indefinite blocking if needed
             data = await websocket.receive_text()
             logger.info(
-                f"Received text from client {websocket.client}: {data}"
+                f"Received unexpected text from client {websocket.client}: {data}"
             )  # Log unexpected messages
+        # ---------------------------
+
     except WebSocketDisconnect:
         logger.warning(f"Client disconnected gracefully: {websocket.client}")
     except Exception as e:
@@ -433,6 +580,8 @@ def run_server():
     """Runs the Uvicorn server."""
     logger.info(f"Starting Uvicorn server on {WS_HOST}:{WS_PORT}")
     logger.info(f"React UI build directory expected at: {REACT_BUILD_DIR}")
+    logger.info(f"SQLite database path: {SQLITE_DB_PATH}")
+    logger.info(f"Reload latest session: {RELOAD_LATEST_SESSION}")
     if not REACT_INDEX_FILE.exists():
         logger.warning("WARNING: React index.html not found!")
         logger.warning(f"Expected path: {REACT_INDEX_FILE}")
@@ -440,14 +589,13 @@ def run_server():
         logger.warning("  cd ui-react && npm install && npm run build")
         logger.warning("Server will start, but UI will show an error.\n")
     # Pass the logging configuration dictionary to uvicorn.run
-    logger.info(
-        f"Uvicorn starting with log_config: {LOGGING_CONFIG}"
-    )  # Log the config being used
+    logger.info(f"Uvicorn starting with log_config...")  # Log the config being used
     uvicorn.run(
         "recursive.utils.ws_server:app",  # Use "module:app" string for reload
         host=WS_HOST,
         port=WS_PORT,
         log_config=LOGGING_CONFIG,  # Use our custom logging config
+        reload=False,  # Set reload=False when running programmatically
         # log_level="debug" # This is now controlled by LOGGING_CONFIG
     )
 

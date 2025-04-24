@@ -4,6 +4,10 @@ import react from "@vitejs/plugin-react";
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
+  // Enable sourcemaps for CSS in development
+  css: {
+    devSourcemap: true,
+  },
   server: {
     host: true,
     proxy: {
@@ -22,5 +26,9 @@ export default defineConfig({
         changeOrigin: true,
       },
     },
+  },
+  // Enable sourcemaps for the production build
+  build: {
+    sourcemap: true,
   },
 });

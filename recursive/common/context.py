@@ -24,6 +24,7 @@ class ExecutionContext:
     agent_class: Optional[str] = None
     parent_node_ids: Optional[List[str]] = None
     # Add other fields as needed, e.g., run_id
+    run_id: Optional[str] = None
 
     def with_(self: T, **kwargs: Any) -> T:
         """

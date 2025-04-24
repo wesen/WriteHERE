@@ -2,6 +2,7 @@ import json
 import traceback
 from datetime import datetime, timezone
 import time
+from typing import Optional
 
 from loguru import logger
 
@@ -17,6 +18,7 @@ from recursive.utils.event_bus import (
     emit_run_finished,
     emit_run_error,
 )
+from recursive.common.context import ExecutionContext
 
 
 def report_writing(
@@ -29,6 +31,7 @@ def report_writing(
     engine_backend,
     nodes_json_file=None,
     today_date=None,
+    ctx: Optional[ExecutionContext] = None,
 ):
     # Statistics for run_finished event
     stats = {
@@ -256,7 +259,7 @@ def report_writing(
             config=event_config,
             run_mode="report",
             timestamp_utc=start_time_utc,
-            run_id=None,  # run_id is added by event bus
+            ctx=ctx,
         )
 
         import pathlib
@@ -359,6 +362,7 @@ def report_writing(
             search_statistics=stats[
                 "search_statistics"
             ],  # Additional report-specific stats
+            ctx=ctx,
         )
 
     except Exception as e:
@@ -375,5 +379,6 @@ def report_writing(
             error_message=str(e),
             stack_trace=traceback.format_exc(),
             context=error_context,
+            ctx=ctx,
         )
         raise  # Re-raise the exception after logging
