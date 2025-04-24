@@ -28,7 +28,11 @@ class GraphRunEngine:
 
     @log_typing
     def __init__(
-        self, root_node: AbstractNode, memory_format: str, config: Dict
+        self,
+        root_node: AbstractNode,
+        memory_format: str,
+        config: Dict,
+        initial_ctx: Optional[ExecutionContext] = None,
     ) -> None:
         """
         Initialize the GraphRunEngine.
@@ -37,9 +41,13 @@ class GraphRunEngine:
             root_node (AbstractNode): The root node of the task graph.
             memory_format (str): The format string for the memory representation.
             config (dict): The configuration dictionary for the engine and agents.
+            initial_ctx (ExecutionContext, optional): Initial execution context. Defaults to None.
         """
         self.root_node: AbstractNode = root_node
         self.memory: Memory = Memory(root_node, format=memory_format, config=config)
+        self.initial_ctx: Optional[ExecutionContext] = (
+            initial_ctx  # Store initial context
+        )
 
     @log_typing
     def find_need_next_step_nodes(
@@ -237,13 +245,14 @@ class GraphRunEngine:
             p.hashkey for p in parent_nodes if p
         ]  # Ensure parent object exists
 
-        # Create ExecutionContext with initial step and node info
-        ctx = ExecutionContext(
+        # Create ExecutionContext for this step, starting from initial context if available
+        step_ctx_base = self.initial_ctx if self.initial_ctx else ExecutionContext()
+        ctx = step_ctx_base.with_(
             step=step,
             node_id=need_next_step_node.hashkey,
-            task_type=need_next_step_node.task_type_tag,  # Add task_type here
-            task_goal=need_next_step_node.task_info.get("goal"),  # Add task_goal here
-            parent_node_ids=parent_node_ids,  # Add parent node IDs here
+            task_type=need_next_step_node.task_type_tag,
+            task_goal=need_next_step_node.task_info.get("goal"),
+            parent_node_ids=parent_node_ids,
         )
 
         # Execute the next step for this node
