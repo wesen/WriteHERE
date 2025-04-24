@@ -4,8 +4,8 @@
 
 The Recursive Agent's visualization system is a modern React-based application that provides real-time monitoring of agent execution through two main views:
 
-1. An event stream table showing detailed execution events
-2. A dynamic task graph visualization showing the hierarchical structure of tasks
+1. An event stream table (`EventTable.tsx`) showing detailed execution events
+2. A dynamic task graph visualization (`GraphCanvas.tsx`) showing the hierarchical structure of tasks
 
 The system is built using React, Redux Toolkit, and Bootstrap, with real-time updates via WebSocket connections. It visualizes the complex task decomposition and execution process of the Recursive Agent.
 
@@ -20,45 +20,55 @@ The system is built using React, Redux Toolkit, and Bootstrap, with real-time up
 - **Real-time Updates**: WebSocket connection
 - **Styling**: CSS with Bootstrap classes
 
+### Shared Utilities & Components
+
+To promote code reuse and consistency, several core elements are centralized:
+
+- **Constants (`src/helpers/eventConstants.ts`)**: Defines shared mappings like `statusColorMap` (for node status colors) and `eventTypeBadgeVariant` (for event type styling).
+- **Formatters (`src/helpers/formatters.tsx`)**: Contains utility functions/components like `formatTimestamp` for consistent date display and `RenderClickableNodeId` for creating interactive links to node details.
+- **`EventTypeBadge.tsx`**: A reusable component for displaying event types with consistent icons and styling (used in `EventTable.tsx` and `NodeDetailModal.tsx`).
+- **`EventPayloadDetails.tsx`**: A reusable component responsible for rendering the summary details of an event's payload, adapting based on the event type (used in `EventTable.tsx` and `NodeDetailModal.tsx`).
+
 ### Data Flow
 
 ```typescript
-// 1. WebSocket Event Reception
+// 1. WebSocket Event Reception (in eventsApi.ts)
 ws.onmessage = (event) => {
   const msg: AgentEvent = JSON.parse(event.data);
 
-  // Update event list
+  // Update event list cache
   updateCachedData((draft) => {
-    draft.events.push(msg);
+    draft.events.unshift(msg); // Add to beginning
+    // Optional: Limit cache size
   });
 
-  // Update graph state based on event type
+  // Dispatch actions to update graph state (in graphSlice.ts)
   switch (msg.event_type) {
     case "node_created":
       dispatch(
         graphNodeAdded({
-          /* node data */
+          /* extracted node data */
         })
       );
       break;
     case "edge_added":
       dispatch(
         graphEdgeAdded({
-          /* edge data */
+          /* extracted edge data */
         })
       );
       break;
     case "node_status_changed":
       dispatch(
         graphNodeUpdated({
-          /* node update data */
+          /* extracted node update data */
         })
       );
       break;
     case "run_started":
       dispatch(graphClearGraph());
       break;
-    // ... other event types might be handled for graph state later
+    // ... other event types handled as needed
   }
 };
 ```
@@ -67,60 +77,51 @@ ws.onmessage = (event) => {
 
 ### Event Types and Display
 
-The system handles various event types, each with its own visual representation:
+The system handles various event types, visually distinguished using the shared `EventTypeBadge.tsx` component, which references configurations in `src/helpers/eventConstants.ts` and `src/components/EventTypeBadge.tsx` itself for icons and colors.
 
-```typescript
-const eventTypeConfig = {
-  step_started: { icon: Play, color: "text-blue-500" },
-  node_created: { icon: GitCommit, color: "text-purple-500" },
-  plan_received: { icon: FileCode, color: "text-teal-500" },
-  node_added: { icon: PlusCircle, color: "text-green-500" },
-  edge_added: { icon: GitFork, color: "text-indigo-500" },
-  inner_graph_built: { icon: Network, color: "text-blue-500" },
-  // ... other event types
-};
-```
+### Event Table (`EventTable.tsx`)
 
-### Event Table Features
+- Real-time updates via RTK Query WebSocket handling (`eventsApi.ts`).
+- Clickable rows triggering modal navigation via Redux (`modalStackSlice.ts`).
+- Uses `EventTypeBadge.tsx` for consistent type display.
+- Uses `formatTimestamp` from `src/helpers/formatters.tsx`.
+- Uses `RenderClickableNodeId` from `src/helpers/formatters.tsx` for node links.
+- Uses `EventPayloadDetails.tsx` for rendering the payload summary column.
 
-- Real-time updates
-- Clickable rows for detailed information
-- Color-coded event types
-- Timestamp formatting
-- Node ID linking
-- Status indicators
+### Event Detail Views (Modals)
 
-### Event Detail Views
+Event details are primarily shown within modal dialogs managed by the `ModalManager.tsx` and `modalStackSlice.ts`.
 
-Each event type has a specialized detail view showing relevant information:
+- **`EventDetailModal.tsx`**: Displays details for a specific event when selected from the `EventTable` or navigated to.
+  - Uses shared constants and formatters.
+  - Renders payload details directly within the modal body, using type guards (`isEventType`).
+  - Uses `RenderClickableNodeId` for navigating to related nodes.
+- **`NodeEventDetailPane.tsx`**: An embedded pane within `NodeDetailModal.tsx` that displays details for a _single event_ selected from the node's related event list.
+  - Similar rendering logic to `EventDetailModal`'s payload section.
+  - Uses shared constants and formatters.
+  - Uses `RenderClickableNodeId` for navigating to related nodes.
 
-- **Node Creation Events**: Shows node ID, type, layer, and relationships
-- **Edge Events**: Visualizes parent-child relationships
-- **Plan Events**: Displays the planning structure
-- **Status Change Events**: Shows state transitions
-- **LLM Call Events**: Details about model interactions
-
-## Graph Visualization
+## Graph Visualization (`GraphCanvas.tsx`)
 
 ### Node Representation
 
-Nodes in the graph are rendered using a custom component that displays:
+Nodes in the graph are rendered using a custom component (`CustomNode.tsx`) that displays:
 
 ```typescript
+// Simplified - actual props derived in component/adapter
 interface MyNodeData {
   id: string;
   data: {
-    type: string; // Determined dynamically: 'goal', 'subtask', or 'action' based on taskType and layer
+    type: string; // Determined dynamically
     title: string; // task goal
-    description: string; // additional info (e.g., node type like PLAN_NODE)
-    stats: {
-      status: string; // NOT_READY, READY, DOING, etc.
-    };
-    showStats: boolean;
-    showError: boolean;
+    description: string; // additional info
+    stats: { status: string };
+    // ... other display flags
   };
 }
 ```
+
+Node status colors are derived from `statusColorMap` in `src/helpers/eventConstants.ts`.
 
 ### Graph Layout
 
@@ -152,10 +153,9 @@ interface GraphSliceState {
 ### Interactive Features
 
 - Pannable and zoomable canvas
-- Clickable nodes with detailed information modals
-- Real-time status updates
-- Visual indicators for node states
-- Edge visualization showing task dependencies
+- Clickable nodes trigger modal navigation via `onNodeClick` passed to `RenderClickableNodeId` and ultimately handled by `ModalManager.tsx`.
+- Real-time status updates reflected visually.
+- Edge visualization showing task dependencies.
 
 ### Rendering the Graph with Reaflow
 
@@ -320,126 +320,101 @@ Other events like `plan_received` or `inner_graph_built`, while important for un
 
 ### Displaying Event Details with Modals
 
-To provide in-depth information about specific events or graph nodes without cluttering the main interface, the system utilizes modal dialogs.
+To provide in-depth information about specific events or graph nodes without cluttering the main interface, the system utilizes modal dialogs, managed by `ModalManager.tsx` and the Redux `modalStackSlice.ts`.
 
 **1. General Event Details (`EventDetailModal.tsx`):**
 
-When a user clicks on a row in the main event table (`EventTable.tsx`), an `EventDetailModal` is displayed. This modal provides a comprehensive view of the selected event.
+When a user clicks on a row in the main event table (`EventTable.tsx`) or navigates via the stack, an `EventDetailModal` is displayed.
 
 ```typescript
-// Triggered from EventTable.tsx
-<tr key={event.event_id} onClick={() => handleRowClick(event)}>
-  {/* ... table cells ... */}
-</tr>;
-
-// Inside EventTable.tsx
-const [selectedEvent, setSelectedEvent] = useState<AgentEvent | null>(null);
-const handleRowClick = (event: AgentEvent) => {
-  setSelectedEvent(event);
+// Simplified trigger from EventTable.tsx
+const handleEventClick = (event: AgentEvent) => {
+  dispatch(pushModal({ type: 'event', params: { eventId: event.event_id } }));
 };
 
-// Render the modal
-{
-  selectedEvent && (
+// Simplified rendering within ModalManager.tsx
+case "event":
+  // Find event...
+  return (
     <EventDetailModal
-      show={!!selectedEvent}
-      onHide={() => setSelectedEvent(null)}
-      event={selectedEvent}
+      show
+      onHide={onHide}
+      event={event}
+      onNodeClick={onNodeClick} // Propagated for navigation
+      hasPrevious={stack.length > 1}
+      onBack={onBack}
     />
   );
-}
 ```
 
 The `EventDetailModal` component renders:
 
-- **Common Event Data**: Event ID, Timestamp, Event Type, Step, Node ID (if applicable).
-- **Specific Payload Details**: It uses type guards (`isEventType`) to determine the exact type of the event and then renders a specific section tailored to that event's payload. For example, for an `llm_call_completed` event, it shows the agent class, model, duration, token usage, and the actual response.
-- **Code Highlighting**: For payloads containing code or structured data (like prompts, results, or plans), it uses a code highlighter component for better readability.
-
-```typescript
-// Inside EventDetailModal.tsx - renderSummaryContent function
-if (isEventType("llm_call_completed")(event)) {
-  return (
-    <>
-      {/* Render LLM call details */}
-      <CodeHighlighter code={JSON.stringify(event.payload.response, null, 2)} />
-    </>
-  );
-} else if (isEventType("plan_received")(event)) {
-  return (
-    <>
-      {/* Render Plan details */}
-      <CodeHighlighter code={JSON.stringify(event.payload.raw_plan, null, 2)} />
-    </>
-  );
-}
-// ... other event types
-```
+- **Common Event Data**: Uses `formatTimestamp` and `RenderClickableNodeId` from `src/helpers/formatters.tsx`.
+- **Specific Payload Details**: Renders event-specific details directly within its body, using type guards (`isEventType`).
+- **Code Highlighting**: Uses `CodeHighlighter.tsx`.
 
 **2. Node-Specific Details (`NodeDetailModal.tsx`):**
 
-When a user clicks on a node within the `GraphCanvas`, a different modal, `NodeDetailModal`, is shown. This modal focuses specifically on the selected node and aggregates relevant information.
+When a user clicks on a node within the `GraphCanvas` or navigates via the stack, `NodeDetailModal` is shown.
 
 ```typescript
-// Triggered from GraphCanvas.tsx
-<CustomNode
-  nodeProps={p}
-  selectedNode={selectedNodeId}
-  onNodeClick={onNodeClick} // Callback to show modal
-/>;
+// Simplified trigger from GraphCanvas.tsx or RenderClickableNodeId
+const handleNodeClick = (nodeId: string) => {
+  dispatch(pushModal({ type: 'node', params: { nodeId } }));
+};
 
-// Inside GraphCanvas.tsx
-const onNodeClick = useCallback((id: string) => {
-  setSelectedNodeId(id);
-  setShowNodeModal(true);
-}, []);
 
-// Render the modal
-{
-  selectedNodeId && (
+// Simplified rendering within ModalManager.tsx
+case "node":
+  return (
     <NodeDetailModal
-      show={showNodeModal}
-      onHide={() => {
-        /* hide logic */
-      }}
-      nodeId={selectedNodeId}
+      show
+      onHide={onHide}
+      nodeId={top.params.nodeId!}
+      onNodeClick={onNodeClick} // Propagated for navigation
+      onEventClick={onEventClick} // Propagated for navigation
+      hasPrevious={stack.length > 1}
+      onBack={onBack}
     />
   );
-}
 ```
 
 The `NodeDetailModal` displays:
 
-- **Node Information**: Fetches node details (ID, NID, Goal, Type, Status) from the Redux store using the `selectNodeById` selector.
-- **Related Events List**: It filters the global event list (fetched via `useGetEventsQuery`) to find all events associated with the selected `nodeId` (including events where it's the primary node, owner, parent, or child).
-- **Event Detail Pane**: It includes an embedded `NodeEventDetailPane` component. When a user clicks on an event in the related events list within the modal, this pane displays the detailed payload information for _that specific event_, similar to how `EventDetailModal` renders details.
+- **Node Information**: Fetches details from Redux (`selectNodeById`). Uses shared constants (`statusColorMap`) and formatters (`formatTimestamp`, `RenderClickableNodeId`).
+- **Related Events List**: Filters events (`useGetEventsQuery`). **Crucially, this list now renders each event item using `EventTypeBadge.tsx` and `EventPayloadDetails.tsx`**, providing a detailed and consistent view similar to the main `EventTable`.
+- **Event Detail Pane**: _Removed_. Previously, clicking an event in the list showed details in `NodeEventDetailPane.tsx`. Now, clicking an event dispatches `pushModal` to show the full `EventDetailModal` for that event, leveraging the modal stack.
 
 ```typescript
-// Inside NodeDetailModal.tsx
-const node = useSelector((state: RootState) => selectNodeById(state, nodeId));
-const { data: eventsData } = useGetEventsQuery();
-
-// Filter events related to this node
-const nodeEvents = useMemo(() => {
-  return eventsData.events.filter(event => /* related to nodeId */);
-}, [eventsData, nodeId]);
-
-return (
-  <Modal show={show} onHide={onHide}>
-    {/* Display node details */}
-    <ListGroup>
-      {nodeEvents.map(event => (
-        <ListGroup.Item key={event.event_id} onClick={() => setSelectedEvent(event)}>
-          {/* Event summary */}
-        </ListGroup.Item>
-      ))}
-    </ListGroup>
-    {selectedEvent && <NodeEventDetailPane event={selectedEvent} />}
-  </Modal>
-);
+// Simplified list rendering inside NodeDetailModal.tsx
+<ListGroup>
+  {nodeEvents.map((event) => (
+    <ListGroup.Item
+      key={event.event_id}
+      action
+      onClick={() => handleEventClick(event)} // Now uses pushModal via props
+      // ... other props
+    >
+      {/* Mimic EventTable row structure */}
+      <div className="flex-grow-1 ...">
+        <div className="d-flex ...">
+          <EventTypeBadge eventType={event.event_type} size="sm" />
+          <small>...</small> {/* Timestamp */}
+        </div>
+        <div>
+          <EventPayloadDetails
+            event={event}
+            onNodeClick={onNodeClick}
+            className="small"
+          />
+        </div>
+      </div>
+    </ListGroup.Item>
+  ))}
+</ListGroup>
 ```
 
-This two-modal approach provides both a general event exploration path (starting from the table) and a node-centric exploration path (starting from the graph), allowing users to delve into the agent's execution details effectively.
+This refactoring simplifies `NodeDetailModal` by removing the embedded detail pane and relying on the modal stack for navigating to full event details, while making the event list itself richer.
 
 ### Modal Navigation Stack
 
@@ -633,9 +608,10 @@ This navigation pattern offers several advantages:
 ### Adding New Event Types
 
 1. Define the event payload interface in `eventsApi.ts`
-2. Add event type to the configuration in `EventTable.tsx`
-3. Implement the detail view in `EventDetailModal.tsx`
-4. Update graph state handling if needed
+2. Update the rendering logic within `EventPayloadDetails.tsx` to handle the new type
+3. Add icon/color configuration to `EventTypeBadge.tsx` and `eventConstants.ts` if needed
+4. Implement specific detail rendering within `EventDetailModal.tsx` if the summary in `EventPayloadDetails` is insufficient for the full modal view
+5. Update graph state handling (`graphSlice.ts`, `eventsApi.ts`) if the event affects the graph structure or node state
 
 ### Customizing Node Visualization
 

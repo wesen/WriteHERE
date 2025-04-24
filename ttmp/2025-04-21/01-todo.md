@@ -9,22 +9,23 @@
 - [ ] Add a previous / after navigation to the event modal
 - [ ] Autoscroll toggle in the event view.
 
-- [ ] Related events in the graph node modal should show the detail snippet
+- [x] Related events in the graph node modal should show the detail snippet
 
-- [ ] Refactor the styling of events in ui-react since a lot of html / styling
+- [x] Refactor the styling of events in ui-react since a lot of html / styling
       is duplicated (for example eventTypeBadgeVariant or eventTypeConfig)
 
-  - [ ] Fix white font in the node detail modal
+  - [x] Fix white font in the node detail modal
   - [ ] show the NID in the events list
 
 - [ ] Implement details view for node result available
 
-- [ ] show the metadata of the node_created event when clicking on the node
+- [x] show the metadata of the node_created event when clicking on the node
 
 - [x] outer node id should be reflected in the graph as a parent relation ship maybe?
 
-- [ ] Add a way to test some preset graphs / browse through runs
-- [ ] Make the outer/inner relationship actually readable
+- [x] Add a way to test some preset graphs / browse through runs
+
+- [-] Make the outer/inner relationship actually readable
 - [ ] Zoom in /filter on a subpart (inner nodes) of the graph / children nodes
 
 - [ ] Make the graph canvas resize so it contains the full thing
