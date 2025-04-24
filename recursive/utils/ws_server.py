@@ -2,6 +2,8 @@ import asyncio
 import json
 import os
 import threading
+import logging  # Import logging
+import traceback  # Import traceback
 from typing import Set, Optional
 from pathlib import Path  # Added for path manipulation
 
@@ -45,100 +47,272 @@ graph_manager = GraphStateManager()
 # Initialize the global event state manager
 event_manager = EventStateManager()
 
+# --- Setup Logging ---
+# Define the format including caller info
+LOG_FORMAT = "%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)d - %(funcName)s()] - %(message)s"
+logging.basicConfig(level=logging.DEBUG, format=LOG_FORMAT)
+# Get the root logger and ensure handlers use the format
+# This helps ensure Uvicorn's default handlers also pick up the format if they use the root logger.
+# However, explicitly configuring Uvicorn is more reliable.
+logging.getLogger().handlers[0].setFormatter(logging.Formatter(LOG_FORMAT))
+
+# Get a logger instance specific to this module
+logger = logging.getLogger(__name__)
+
 
 async def redis_listener(redis_client: aredis.Redis):
     """Listens to Redis stream and broadcasts messages to connected websockets."""
     last_id = "$"  # Start reading new messages
-    print(f"Starting Redis listener on stream '{EVENT_STREAM_NAME}'...")
-    while True:
-        try:
-            # block=0 means wait indefinitely for new messages
-            response = await redis_client.xread({EVENT_STREAM_NAME: last_id}, block=0)
-            if response:
-                for stream, messages in response:
-                    print(f"Received messages: {messages}")
-                    for message_id, fields in messages:
-                        last_id = message_id
-                        # Assuming the event JSON is stored under 'json_payload' key
-                        if "json_payload" in fields:
-                            message_data = fields["json_payload"]
+    logger.info(f"Starting Redis listener on stream '{EVENT_STREAM_NAME}'...")
+    try:  # Outer try to catch errors during the loop itself
+        while True:
+            inner_loop_completed_normally = False
+            try:
+                logger.info(
+                    f"Redis listener: Waiting for messages from ID '{last_id}'..."
+                )
+                # block=0 means wait indefinitely for new messages
+                response = await redis_client.xread(
+                    {EVENT_STREAM_NAME: last_id}, block=0
+                )
+                logger.info(
+                    f"Redis listener: xread returned (response type: {type(response)})"
+                )
 
-                            # Process the event for state management
-                            try:
-                                event = json.loads(message_data)
-                                print(f"Processing event: {event.get('event_type')}")
-
-                                # Handle run_started event specially
-                                if event.get("event_type") == "run_started":
-                                    print(f"Clearing events: {event.get('event_type')}")
-                                    await event_manager.clear_events()
-
-                                # Add event to manager
-                                print(
-                                    f"Adding event to manager: {event.get('event_type')}"
-                                )
-                                await event_manager.add_event(event)
-
-                                # Process for graph state
-                                print(
-                                    f"Processing event for graph state: {event.get('event_type')}"
-                                )
-                                await graph_manager.process_event(event)
-                            except Exception as e:
-                                print(
-                                    f"Error processing event for state management: {e}"
+                if response:
+                    logger.info(f"Received {len(response)} stream(s) with messages.")
+                    for stream, messages in response:
+                        logger.info(
+                            f"Processing stream '{stream}' with {len(messages)} message(s)."
+                        )
+                        # print(f"Received messages: {messages}") # Redundant with logger
+                        for message_id, fields in messages:
+                            last_id = message_id
+                            logger.info(f"Processing message ID: {message_id}")
+                            # Assuming the event JSON is stored under 'json_payload' key
+                            if "json_payload" in fields:
+                                message_data = fields["json_payload"]
+                                logger.info(
+                                    f"Message payload found (length: {len(message_data)})"
                                 )
 
-                            # Broadcast to all connected clients
-                            # Create a list copy to avoid issues if set changes during iteration
-                            disconnected_peers = set()
-                            for connection in list(active_connections):
+                                # Process the event for state management
                                 try:
-                                    await connection.send_text(message_data)
-                                except WebSocketDisconnect:
-                                    disconnected_peers.add(connection)
-                                    print("Client disconnected (during send)")
+                                    event = json.loads(message_data)
+                                    event_type = event.get("event_type", "UNKNOWN")
+                                    logger.info(f"Processing event: {event_type}")
+
+                                    # Handle run_started event specially
+                                    if event_type == "run_started":
+                                        logger.info(
+                                            "Event is 'run_started', clearing events history."
+                                        )
+                                        await event_manager.clear_events()
+
+                                    # Add event to manager
+                                    logger.info(
+                                        f"Adding event to EventStateManager: {event_type}"
+                                    )
+                                    await event_manager.add_event(event)
+
+                                    # Process for graph state
+                                    logger.info(
+                                        f"Processing event for GraphStateManager: {event_type}"
+                                    )
+                                    await graph_manager.process_event(event)
+                                    logger.info(
+                                        f"Finished processing event: {event_type}"
+                                    )
                                 except Exception as e:
-                                    print(f"Error sending to client: {e}")
-                                    disconnected_peers.add(
-                                        connection
-                                    )  # Assume problematic
+                                    logger.error(
+                                        f"Error processing event for state management: {e}",
+                                        exc_info=True,
+                                    )
+                                    # traceback.print_exc() # Use logger's exc_info instead
 
-                            # Clean up disconnected peers after broadcast
-                            for peer in disconnected_peers:
-                                active_connections.discard(peer)
-                        else:
-                            print(
-                                f"Warning: Received message {message_id} without 'json_payload' field."
-                            )
+                                # Broadcast to all connected clients
+                                logger.info(
+                                    f"Broadcasting message to {len(active_connections)} active connection(s)..."
+                                )
+                                # Create a list copy to avoid issues if set changes during iteration
+                                disconnected_peers = set()
+                                for connection in list(active_connections):
+                                    try:
+                                        await connection.send_text(message_data)
+                                    except WebSocketDisconnect:
+                                        disconnected_peers.add(connection)
+                                        logger.warning(
+                                            f"Client disconnected during send: {connection.client}"
+                                        )
+                                    except Exception as e:
+                                        logger.error(
+                                            f"Error sending to client {connection.client}: {e}",
+                                            exc_info=True,
+                                        )
+                                        disconnected_peers.add(
+                                            connection
+                                        )  # Assume problematic
 
-        except redis.exceptions.ConnectionError as e:
-            print(
-                f"Redis connection error in listener: {e}. Attempting to reconnect..."
-            )
-            await asyncio.sleep(5)  # Wait before retrying
-        except Exception as e:
-            print(f"Unexpected error in Redis listener: {e}")
-            await asyncio.sleep(1)  # Prevent rapid looping on unknown errors
+                                # Clean up disconnected peers after broadcast
+                                if disconnected_peers:
+                                    logger.info(
+                                        f"Removing {len(disconnected_peers)} disconnected peer(s)."
+                                    )
+                                    for peer in disconnected_peers:
+                                        active_connections.discard(peer)
+                            else:
+                                logger.warning(
+                                    f"Received message {message_id} without 'json_payload' field."
+                                )
+                    logger.info("Finished processing batch of messages.")
+                else:
+                    # This might happen if xread times out (if block > 0) or connection issue
+                    logger.debug("Redis listener: xread returned empty response.")
+
+                inner_loop_completed_normally = (
+                    True  # Mark normal completion for this iteration
+                )
+
+            # Specific exception handlers first
+            except redis.exceptions.ConnectionError as e:
+                logger.error(
+                    f"Redis connection error in listener loop: {e}. Attempting to reconnect in 5 seconds..."
+                )
+                await asyncio.sleep(5)  # Wait before retrying
+            except asyncio.CancelledError:
+                logger.warning("Redis listener task explicitly cancelled.")
+                raise  # Re-raise CancelledError to ensure the task actually stops
+            except BaseException as e:  # Catch BaseException last
+                # Log the full traceback for unexpected errors
+                logger.error(
+                    f"Unexpected BaseException in Redis listener loop: {type(e).__name__}: {e}",
+                    exc_info=True,
+                )
+                # traceback.print_exc() # Use logger's exc_info instead
+                logger.info("Waiting 1 second before retrying after unexpected error.")
+                await asyncio.sleep(1)  # Prevent rapid looping on unknown errors
+            finally:
+                # This will run even if the task is cancelled during the 'await xread'
+                logger.debug(
+                    f"Redis listener inner loop finally block reached. Completed normally: {inner_loop_completed_normally}"
+                )
+
+    except asyncio.CancelledError:
+        logger.warning("Redis listener task cancelled (caught in outer block).")
+        # Task cancellation is usually expected during shutdown, but log it
+    except BaseException as e:
+        # This catches errors in the while condition or outside the inner try/finally
+        logger.critical(
+            f"CRITICAL error in Redis listener outer scope: {type(e).__name__}: {e}",
+            exc_info=True,
+        )
+    finally:
+        logger.info("Redis listener task is terminating.")
 
 
 async def startup_event():
     """Creates Redis connection and starts the listener task."""
-    print("WebSocket server starting up...")
+    logger.info("WebSocket server starting up...")
     try:
+        logger.info(f"Attempting to connect to Redis at {REDIS_URL}...")
         redis_client = aredis.from_url(REDIS_URL, decode_responses=True)
+        logger.info("Pinging Redis...")
         await redis_client.ping()  # Verify connection
-        print(f"Async Redis connected successfully to {REDIS_URL}")
+        logger.info(f"Async Redis connected successfully to {REDIS_URL}")
         # Start the Redis listener task in the background
-        asyncio.create_task(redis_listener(redis_client))
+        logger.info("Creating Redis listener task...")
+        # Store the task handle if we need to explicitly cancel it later
+        app.state.redis_listener_task = asyncio.create_task(
+            redis_listener(redis_client), name="RedisListenerTask"
+        )
+        logger.info("Redis listener task created.")
     except aredis.exceptions.ConnectionError as e:
-        print(f"FATAL: Could not connect to Redis at {REDIS_URL} on startup: {e}")
+        logger.critical(
+            f"FATAL: Could not connect to Redis at {REDIS_URL} on startup: {e}",
+            exc_info=True,
+        )
         # Optionally, exit or handle this critical failure
     except Exception as e:
-        print(f"FATAL: Unexpected error during startup Redis connection: {e}")
+        logger.critical(
+            f"FATAL: Unexpected error during startup Redis connection: {e}",
+            exc_info=True,
+        )
 
 
-app = FastAPI(on_startup=[startup_event])
+# Define a shutdown event handler (optional but good practice)
+async def shutdown_event():
+    logger.info("WebSocket server shutting down...")
+    if hasattr(app.state, "redis_listener_task") and app.state.redis_listener_task:
+        task = app.state.redis_listener_task
+        if not task.done():
+            logger.info("Attempting to cancel Redis listener task...")
+            task.cancel()
+            try:
+                # Give the task a moment to finish after cancellation
+                await asyncio.wait_for(task, timeout=5.0)
+            except asyncio.CancelledError:
+                logger.info("Redis listener task successfully cancelled.")
+            except asyncio.TimeoutError:
+                logger.warning("Redis listener task did not cancel within timeout.")
+            except Exception as e:
+                logger.error(
+                    f"Error during Redis listener task shutdown: {e}", exc_info=True
+                )
+        else:
+            logger.info("Redis listener task was already done.")
+    # Add any other cleanup here
+    logger.info("WebSocket server shutdown complete.")
+
+
+# Configure Uvicorn logging to match our setup
+# Based on: https://github.com/encode/uvicorn/issues/403#issuecomment-544960673
+LOGGING_CONFIG = {
+    "version": 1,
+    "disable_existing_loggers": False,  # Keep existing loggers like ours
+    "formatters": {
+        "default": {
+            "()": "uvicorn.logging.DefaultFormatter",
+            "fmt": LOG_FORMAT,  # Use our format
+            "use_colors": None,
+        },
+        "access": {
+            "()": "uvicorn.logging.AccessFormatter",
+            # Include relevant access log info, but use our base format style
+            "fmt": f'{LOG_FORMAT} - %(client_addr)s - "%(request_line)s" %(status_code)s',
+            "use_colors": None,
+        },
+    },
+    "handlers": {
+        "default": {
+            "formatter": "default",
+            "class": "logging.StreamHandler",
+            "stream": "ext://sys.stderr",
+        },
+        "access": {
+            "formatter": "access",
+            "class": "logging.StreamHandler",
+            "stream": "ext://sys.stdout",  # Uvicorn's default is stdout for access
+        },
+    },
+    "loggers": {
+        # Configure the root logger (used by our app logger if not specified)
+        "": {"handlers": ["default"], "level": "DEBUG"},
+        # Configure Uvicorn's loggers
+        "uvicorn.error": {
+            "handlers": ["default"],
+            "level": "INFO",
+            "propagate": False,
+        },  # Uvicorn errors go to default handler
+        "uvicorn.access": {
+            "handlers": ["access"],
+            "level": "INFO",
+            "propagate": False,
+        },  # Uvicorn access logs go to access handler
+    },
+}
+
+
+app = FastAPI(on_startup=[startup_event], on_shutdown=[shutdown_event])
 
 # --- Serve React App Static Files ---
 # Mount the 'assets' directory first if it exists (Vite specific)
@@ -165,18 +339,21 @@ async def get_events(limit: Optional[int] = None):
 @app.get("/api/graph")
 async def get_graph():
     """Return complete graph state matching Redux store structure."""
+    logger.info("GET /api/graph requested")  # Added logging
     return graph_manager.get_graph_state()
 
 
 @app.get("/api/graph/nodes")
 async def get_nodes():
     """Return all nodes."""
+    logger.info("GET /api/graph/nodes requested")  # Added logging
     return {"nodes": graph_manager.get_nodes()}
 
 
 @app.get("/api/graph/nodes/{node_id}")
 async def get_node(node_id: str):
     """Return specific node details."""
+    logger.info(f"GET /api/graph/nodes/{node_id} requested")  # Added logging
     node = graph_manager.get_node(node_id)
     if node:
         return node
@@ -186,12 +363,14 @@ async def get_node(node_id: str):
 @app.get("/api/graph/edges")
 async def get_edges():
     """Return all edges."""
+    logger.info("GET /api/graph/edges requested")  # Added logging
     return {"edges": graph_manager.get_edges()}
 
 
 @app.get("/api/graph/edges/{edge_id}")
 async def get_edge(edge_id: str):
     """Return specific edge details."""
+    logger.info(f"GET /api/graph/edges/{edge_id} requested")  # Added logging
     edge = graph_manager.get_edge(edge_id)
     if edge:
         return edge
@@ -202,19 +381,28 @@ async def get_edge(edge_id: str):
 async def websocket_endpoint(websocket: WebSocket):
     """Handles WebSocket connections."""
     await websocket.accept()
-    print(f"Client connected: {websocket.client}")
+    logger.info(f"Client connected: {websocket.client}")
     active_connections.add(websocket)
     try:
         # Keep the connection alive, listening for disconnect
         while True:
             # We don't expect messages from client in this simple broadcast setup
             # But keep receiving to detect disconnects
-            await websocket.receive_text()
+            # Set a timeout or handle potential indefinite blocking if needed
+            data = await websocket.receive_text()
+            logger.info(
+                f"Received text from client {websocket.client}: {data}"
+            )  # Log unexpected messages
     except WebSocketDisconnect:
-        print(f"Client disconnected: {websocket.client}")
+        logger.warning(f"Client disconnected gracefully: {websocket.client}")
     except Exception as e:
-        print(f"Error in WebSocket connection: {e}")
+        # Log the full traceback for WebSocket errors
+        logger.error(
+            f"Error in WebSocket connection for {websocket.client}: {e}", exc_info=True
+        )
+        # traceback.print_exc() # Use logger's exc_info instead
     finally:
+        logger.info(f"Removing connection for client: {websocket.client}")
         active_connections.discard(websocket)
 
 
@@ -222,19 +410,19 @@ async def websocket_endpoint(websocket: WebSocket):
 # This allows React Router (if used) to handle client-side routing.
 @app.get("/{full_path:path}")
 async def serve_react_app(full_path: str):
-    print(f"Request for path: {full_path}")
+    logger.info(f"Request for path: {full_path}")
     # Check if the requested path corresponds to a file in the build directory
     potential_file = REACT_BUILD_DIR / full_path
     if potential_file.exists() and potential_file.is_file():
-        print(f"Serving specific file: {potential_file}")
+        logger.info(f"Serving specific file: {potential_file}")
         return FileResponse(potential_file)
 
     # If it's not a specific file or doesn't exist, serve index.html
     if REACT_INDEX_FILE.exists():
-        print(f"Serving index.html: {REACT_INDEX_FILE}")
+        logger.info(f"Serving index.html: {REACT_INDEX_FILE}")
         return FileResponse(REACT_INDEX_FILE)
     else:
-        print(f"Error: React index.html not found at {REACT_INDEX_FILE}")
+        logger.error(f"Error: React index.html not found at {REACT_INDEX_FILE}")
         return HTMLResponse(
             content=f"<html><body><h1>React App Not Found</h1><p>Build directory not found or index.html missing at {REACT_INDEX_FILE}. Run 'npm run build' in ui-react.</p></body></html>",
             status_code=404,
@@ -243,28 +431,40 @@ async def serve_react_app(full_path: str):
 
 def run_server():
     """Runs the Uvicorn server."""
-    print(f"Starting Uvicorn server on {WS_HOST}:{WS_PORT}")
-    print(f"React UI build directory expected at: {REACT_BUILD_DIR}")
+    logger.info(f"Starting Uvicorn server on {WS_HOST}:{WS_PORT}")
+    logger.info(f"React UI build directory expected at: {REACT_BUILD_DIR}")
     if not REACT_INDEX_FILE.exists():
-        print("\nWARNING: React index.html not found!")
-        print(f"Expected path: {REACT_INDEX_FILE}")
-        print("Please build the React app first by running:")
-        print("  cd ui-react && npm install && npm run build")
-        print("Server will start, but UI will show an error.\n")
-    uvicorn.run(app, host=WS_HOST, port=WS_PORT, log_level="info")
+        logger.warning("WARNING: React index.html not found!")
+        logger.warning(f"Expected path: {REACT_INDEX_FILE}")
+        logger.warning("Please build the React app first by running:")
+        logger.warning("  cd ui-react && npm install && npm run build")
+        logger.warning("Server will start, but UI will show an error.\n")
+    # Pass the logging configuration dictionary to uvicorn.run
+    logger.info(
+        f"Uvicorn starting with log_config: {LOGGING_CONFIG}"
+    )  # Log the config being used
+    uvicorn.run(
+        "recursive.utils.ws_server:app",  # Use "module:app" string for reload
+        host=WS_HOST,
+        port=WS_PORT,
+        log_config=LOGGING_CONFIG,  # Use our custom logging config
+        # log_level="debug" # This is now controlled by LOGGING_CONFIG
+    )
 
 
 def start_ws_thread():
     """Starts the FastAPI server in a separate daemon thread."""
-    print("Attempting to start WebSocket server thread...")
-    server_thread = threading.Thread(target=run_server, daemon=True)
+    logger.info("Attempting to start WebSocket server thread...")
+    server_thread = threading.Thread(
+        target=run_server, daemon=True, name="WebSocketServerThread"
+    )
     server_thread.start()
-    print("WebSocket server thread started.")
+    logger.info(f"WebSocket server thread started (Thread ID: {server_thread.ident})")
     return server_thread
 
 
 # Example usage (if run directly)
 if __name__ == "__main__":
     # This allows running the server standalone for testing
-    print("Running WebSocket server directly...")
+    logger.info("Running WebSocket server directly...")
     run_server()

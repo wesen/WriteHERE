@@ -1,8 +1,12 @@
 WARMUP :
 
-- [ ] Refactor the styling of events in ui-react since a lot of html / styling is duplicated (for example eventTypeBadgeVariant or eventTypeConfig)
+- [ ] Refactor the styling of events in ui-react since a lot of html / styling
+      is duplicated (for example eventTypeBadgeVariant or eventTypeConfig)
 
 ## BUGS / issues
+
+- [ ] Weird issues where a task gets cancelled and no redis events are received
+- [ ] SOurcemaps in vite don't get loaded
 
 - [ ] Some nodes don't seem to have parents
 - [ ] What about N/A status of new nodes?
@@ -18,6 +22,7 @@ WARMUP :
 ## Ideas for events
 
 - [ ] add events when nodes are computed / scheduled / created in engine.py (forward_one_step_not_parallel)
+- [ ] add events when templates are rendered or parsed
 - [x] add run started event
 - [ ] Add llm call id to link completed to started + tool calls to parent
 - [ ] pass execution context to tool_calls

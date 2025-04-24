@@ -275,10 +275,15 @@ export enum ConnectionStatus {
   Disconnected = "Disconnected",
 }
 
+// Add this helper for logging
+const logWs = (message: string, ...args: any[]) => {
+  console.log(`[WS ${new Date().toISOString()}] ${message}`, ...args);
+};
+
 // Define a service using a base query and expected endpoints
 export const eventsApi = createApi({
   reducerPath: "eventsApi",
-  baseQuery: fetchBaseQuery({ baseUrl: "/" }), // Use root base URL
+  baseQuery: fetchBaseQuery({ baseUrl: "/api/" }), // Base query for REST endpoints
   endpoints: (builder) => ({
     getEvents: builder.query<
       {
@@ -287,7 +292,7 @@ export const eventsApi = createApi({
       },
       void
     >({
-      query: () => "/api/events", // Specify the full path here
+      query: () => "/events", // Specify the full path here
       async onQueryStarted(_, { queryFulfilled, dispatch }) {
         try {
           const result = await queryFulfilled;
@@ -370,6 +375,8 @@ export const eventsApi = createApi({
         const wsProtocol =
           window.location.protocol === "https:" ? "wss:" : "ws:";
         const wsUrl = `${wsProtocol}//${window.location.host}/ws/events`; // Use host instead of hostname and port
+        logWs(`Connecting to: ${wsUrl}`);
+
         const ws = new WebSocket(wsUrl);
 
         ws.onopen = () => {
