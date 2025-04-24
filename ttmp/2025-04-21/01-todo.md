@@ -8,7 +8,11 @@ WARMUP :
 
 - [ ] show the metadata of the node_created event when clicking on the node
 
-- outer node id should be reflected in the graph as a parent relation ship maybe?
+- [x] outer node id should be reflected in the graph as a parent relation ship maybe?
+
+- [ ] Add a way to test some preset graphs / browse through runs
+- [ ] Make the outer/inner relationship actually readable
+- [ ] Zoom in /filter on a subpart (inner nodes) of the graph / children nodes
 
 ## BUGS / issues
 

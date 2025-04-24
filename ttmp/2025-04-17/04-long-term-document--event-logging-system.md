@@ -653,7 +653,8 @@ _(Indexes and Views are defined in `db_manager.py` for performance and querying 
 2.  The `redis_listener` in `ws_server.py` reads the event from Redis.
 3.  The event is passed to `db_manager.store_event(event)`.
 4.  `store_event` inserts the base event record into the `events` table.
-5.  Based on the `event_type`, specific handler methods (`_handle_run_started`, `_handle_node_created`, `_handle_node_status_changed`, `_handle_node_result_available`, `_handle_edge_added`, `_handle_plan_received`, etc.) are called to insert or update records in the `runs`, `nodes`, `edges`, and `graph_plans` tables. The `nodes` and `edges` tables represent the persistent state derived from key events like `node_created` and `edge_added`.
+5.  Based on the `event_type`, specific handler methods (`_handle_run_started`, `_handle_node_created`, `_handle_node_status_changed`, `_handle_node_result_available`, `_handle_edge_added`, `_handle_plan_received`, `_handle_inner_graph_built`, etc.) are called to insert or update records in the `runs`, `nodes`, `edges`, and `graph_plans` tables. The `nodes` and `edges` tables represent the persistent state derived from key events like `node_created` and `edge_added`.
+6.  **Specifically for `inner_graph_built`**: The `_handle_inner_graph_built` method in `db_manager.py` uses the `node_id` (outer node) and `node_ids` (inner nodes) from the payload to update the `outer_node_id` field in the `nodes` table for all the specified inner nodes, establishing the hierarchical link.
 
 ## WebSocket Server Implementation
 
@@ -663,17 +664,18 @@ The WebSocket server (`recursive/utils/ws_server.py`) integrates the Redis liste
   - Initializes the `DatabaseManager`.
   - If `RELOAD_LATEST_SESSION` is true:
     1.  Calls `db_manager.get_latest_run_graph()` to fetch node and edge data from the `nodes` and `edges` tables for the most recent run.
-    2.  Calls `graph_manager.load_state_from_db()` to directly populate the in-memory graph state.
+    2.  Calls `graph_manager.load_state_from_db()` to directly populate the in-memory graph state, **including reconstructing the inner node hierarchy from the `outer_node_id` field**.
     3.  Calls `db_manager.get_latest_run_events()` to fetch the full event history for the most recent run.
     4.  Replays these historical events _only_ into the `EventStateManager` using `event_manager.add_event()` to build the historical event list. Stores these events for broadcasting to newly connected clients.
   - Connects to Redis and starts the `redis_listener` task.
 - **Redis Listener (`redis_listener`)**: Continuously reads new events from Redis. For each event, it:
-  - Calls `db_manager.store_event()` to persist the event and update corresponding DB state (nodes, edges, runs, plans).
+  - Calls `db_manager.store_event()` to persist the event and update corresponding DB state (nodes, edges, runs, plans, **including inner node relationships via `_handle_inner_graph_built`**).
   - Updates the in-memory `EventStateManager`.
-  - Updates the in-memory `GraphStateManager` _only_ for events relevant to live graph changes (`run_started`, `node_created`, `node_status_changed`, `edge_added`).
+  - Updates the in-memory `GraphStateManager` for events relevant to live graph changes (`run_started`, `node_created`, `node_status_changed`, `edge_added`, **and `inner_graph_built` to update the inner node mapping**).
   - Broadcasts the raw event string to all connected WebSocket clients.
 - **WebSocket Endpoint (`websocket_endpoint`)**: Handles new client connections. If historical events were loaded during startup, they are sent to the newly connected client.
 - **API Endpoints (`/api/...`)**: Serve data directly from the in-memory `EventStateManager` and `GraphStateManager`, reflecting either a live run or the reloaded state.
+  - **`/api/graph`**: Now includes an additional `inner_nodes` key in the response, which is a dictionary mapping outer node IDs to lists of their inner node IDs, provided by `graph_manager.get_inner_node_relationships()`.
 - **Shutdown (`shutdown_event`)**: Cancels the Redis listener task and closes the SQLite database connection via `db_manager.close()`.
 
 ## Deployment Options

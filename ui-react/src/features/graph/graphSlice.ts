@@ -29,6 +29,7 @@ export type Edge = {
 interface GraphSliceState {
   nodes: EntityState<Node, string>;
   edges: EntityState<Edge, string>;
+  innerNodes: Record<string, string[]>; // Add mapping for outer -> inner node IDs
   initialized: boolean;
   loading: boolean;
   error: string | null;
@@ -42,6 +43,7 @@ const edges = createEntityAdapter<Edge>();
 const initialState: GraphSliceState = {
   nodes: nodes.getInitialState(),
   edges: edges.getInitialState(),
+  innerNodes: {}, // Initialize innerNodes
   initialized: false,
   loading: false,
   error: null,
@@ -92,12 +94,18 @@ const slice = createSlice({
         if (action.payload.graph.edges) {
           state.edges = action.payload.graph.edges;
         }
+
+        // Extract inner node relationships (new)
+        if (action.payload.inner_nodes) {
+          state.innerNodes = action.payload.inner_nodes;
+        }
       }
       state.initialized = true;
     },
     clearGraph: (state) => {
       state.nodes = nodes.getInitialState();
       state.edges = edges.getInitialState();
+      state.innerNodes = {}; // Reset innerNodes on clear
       state.initialized = true;
       state.loading = false;
       state.error = null;
@@ -122,6 +130,11 @@ const slice = createSlice({
           // Extract edges
           if (action.payload.graph.edges) {
             state.edges = action.payload.graph.edges;
+          }
+
+          // Extract inner node relationships (new)
+          if (action.payload.inner_nodes) {
+            state.innerNodes = action.payload.inner_nodes;
           }
 
           state.initialized = true;

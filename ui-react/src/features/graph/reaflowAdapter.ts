@@ -1,4 +1,3 @@
-import { MyNodeData } from "../../components/reaflow/CustomNode";
 import { NodeData, EdgeData } from "reaflow"; // Import Reaflow types
 import { createSelector } from "@reduxjs/toolkit";
 import { selectAllNodes, selectAllEdges } from "./selectors";
@@ -12,82 +11,105 @@ import { RootState } from "../../store";
 const selectGraphNodes = (state: RootState) => selectAllNodes(state);
 const selectGraphEdges = (state: RootState) => selectAllEdges(state);
 
-// Helper to create a map for quick node lookup
-const createNodeMap = (nodes: GraphNode[]) => {
-  const map = new Map<string, GraphNode>();
-  nodes.forEach((node) => map.set(node.id, node));
-  return map;
-};
-
 export const selectReaflowGraph = createSelector(
   [selectGraphNodes, selectGraphEdges],
   (
     nodes: GraphNode[],
     edges: GraphEdge[]
   ): { nodes: NodeData[]; edges: EdgeData[] } => {
-    const nodeMap = createNodeMap(nodes);
+    const finalNodes: NodeData[] = [];
+    const virtualNodeMap = new Map<string, string>(); // Original Parent ID -> Virtual Container ID
 
-    // Map GraphNode to Reaflow NodeData, initially without parent
-    const rNodesIntermediate = nodes.map((n) => ({
-      id: n.id,
-      width: NODE_W, // Initial width, layout might override
-      height: NODE_H, // Initial height, layout might override
-      data: {
-        type:
-          n.taskType === "COMPOSITION"
-            ? "goal"
-            : n.layer === 0
-            ? "goal"
-            : n.layer === 1
-            ? "subtask"
-            : "action",
-        title: n.goal,
-        description: `(${n.type}) ${n.nid}`,
-        stats: { status: n.status ?? "N/A" },
-        showStats: true,
-        showError: n.status === "FAILED",
-      },
-      parent: undefined as string | undefined, // Initialize parent as undefined
-    }));
-
-    // Create a map for quick intermediate node lookup
-    const rNodeMap = new Map<string, (typeof rNodesIntermediate)[0]>();
-    rNodesIntermediate.forEach((node) => rNodeMap.set(node.id, node));
-
-    // Process nested relationships and set parent property
+    // Process original nodes and create virtual containers
     nodes.forEach((n) => {
-      if (n.inner_nodes) {
-        n.inner_nodes.forEach((childId) => {
-          const childRNode = rNodeMap.get(childId);
-          if (childRNode) {
-            childRNode.parent = n.id; // Assign parent ID
-          }
+      // Add the original node
+      finalNodes.push({
+        id: n.id,
+        width: NODE_W,
+        height: NODE_H,
+        data: {
+          type:
+            n.taskType === "COMPOSITION"
+              ? "goal"
+              : n.layer === 0
+              ? "goal"
+              : n.layer === 1
+              ? "subtask"
+              : "action",
+          title: n.goal,
+          description: `(${n.type}) ${n.nid}`,
+          stats: { status: n.status ?? "N/A" },
+          showStats: true,
+          showError: n.status === "FAILED",
+        },
+        parent: undefined, // Will be adjusted later if it's an inner node
+      });
+
+      // If this node has inner nodes, create a virtual container
+      if (n.inner_nodes && n.inner_nodes.length > 0) {
+        const virtualId = `${n.id}-container`;
+        virtualNodeMap.set(n.id, virtualId);
+        finalNodes.push({
+          id: virtualId,
+          // width/height determined by layout
+          parent: n.id, // Virtual node is child of original node
+          data: {
+            type: "container",
+            title: "",
+            description: "",
+            stats: {},
+            showStats: false,
+            showError: false,
+          }, // Minimal data
+          className: "node-container", // Add class for styling
         });
       }
     });
 
-    // Final nodes array adheres to NodeData[] type
-    const rNodes: NodeData[] = rNodesIntermediate;
+    // Create a map for final nodes for easy lookup
+    const finalNodeMap = new Map<string, NodeData>();
+    finalNodes.forEach((node) => finalNodeMap.set(node.id, node));
 
-    // Create edges, adding parent property for nested edges
+    // Adjust parenting for inner nodes
+    nodes.forEach((n) => {
+      // Find which original node is the outer node for this one.
+      // This requires iterating to find which node's inner_nodes includes 'n.id'.
+      let outerNodeId: string | undefined = undefined;
+      for (const [potentialOuterId, innerNodeIds] of nodes
+        .filter((p) => p.inner_nodes)
+        .map((p) => [p.id, p.inner_nodes] as [string, string[]])) {
+        if (innerNodeIds.includes(n.id)) {
+          outerNodeId = potentialOuterId;
+          break;
+        }
+      }
+
+      if (outerNodeId) {
+        const virtualContainerId = virtualNodeMap.get(outerNodeId);
+        const nodeToUpdate = finalNodeMap.get(n.id);
+        // XXX probably where to check for null parent
+        if (nodeToUpdate && virtualContainerId) {
+          nodeToUpdate.parent = virtualContainerId;
+        }
+      }
+    });
+
+    // Create edges, adjusting parent for nested edges
     const rEdges: EdgeData[] = edges.map((e) => {
-      const sourceNode = nodeMap.get(e.parent);
-      const targetNode = nodeMap.get(e.child);
-
-      // Find the Reaflow parent IDs for source and target
-      const sourceRNode = rNodeMap.get(e.parent);
-      const targetRNode = rNodeMap.get(e.child);
-
-      const sourceParentId = sourceRNode?.parent;
-      const targetParentId = targetRNode?.parent;
+      const sourceNode = finalNodeMap.get(e.parent);
+      const targetNode = finalNodeMap.get(e.child);
 
       let edgeParent: string | undefined = undefined;
       let className = "edge-hierarchy";
 
-      // Check if edge is internal to a subgraph
-      if (sourceParentId && sourceParentId === targetParentId) {
-        edgeParent = sourceParentId; // Edge belongs to this parent
-        className = "edge-nested"; // Use nested styling
+      // If both source and target are children of the *same* virtual container node
+      if (
+        sourceNode?.parent &&
+        sourceNode.parent === targetNode?.parent &&
+        sourceNode.parent.endsWith("-container")
+      ) {
+        edgeParent = sourceNode.parent; // Assign container id as edge parent
+        className = "edge-nested";
       }
 
       return {
@@ -99,6 +121,6 @@ export const selectReaflowGraph = createSelector(
       };
     });
 
-    return { nodes: rNodes, edges: rEdges };
+    return { nodes: finalNodes, edges: rEdges };
   }
 );

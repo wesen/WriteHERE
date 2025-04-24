@@ -464,7 +464,10 @@ async def get_events(limit: Optional[int] = None):
 async def get_graph():
     """Return complete graph state from GraphStateManager."""
     logger.info("GET /api/graph requested")
-    return graph_manager.get_graph_state()
+    graph_state = graph_manager.get_graph_state()
+    # Add inner node relationships to the response
+    graph_state["inner_nodes"] = graph_manager.get_inner_node_relationships()
+    return graph_state
 
 
 @app.get("/api/graph/nodes")

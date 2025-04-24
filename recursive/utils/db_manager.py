@@ -2,7 +2,7 @@ import sqlite3
 import json
 import logging
 from pathlib import Path
-from typing import Optional, Dict, List, Tuple
+from typing import Optional, Dict, List, Tuple, Any
 
 logger = logging.getLogger(__name__)
 
@@ -238,7 +238,10 @@ class DatabaseManager:
                 self._handle_edge_added(event)
             elif event_type == "plan_received":
                 self._handle_plan_received(event)
-            # node_added and inner_graph_built no longer need specific DB handlers
+            # Add handler for inner_graph_built
+            elif event_type == "inner_graph_built":
+                self._handle_inner_graph_built(event)
+            # node_added no longer needs specific DB handler
 
             self.conn.commit()
         except sqlite3.Error as e:
@@ -500,21 +503,65 @@ class DatabaseManager:
                 "child_nid",
             ]
         }
-
         self.conn.execute(
             sql,
             (
                 run_id,
                 parent_node_id,
                 child_node_id,
-                payload.get("parent_node_nid"),
-                payload.get("child_node_nid"),
+                payload.get("parent_nid"),
+                payload.get("child_nid"),
                 json.dumps(metadata) if metadata else None,
             ),
         )
         logger.debug(
-            f"Edge added in DB: {payload.get('parent_node_nid')} -> {payload.get('child_node_nid')}"
+            f"Edge added in DB: {payload.get('parent_nid')} -> {payload.get('child_nid')}"
         )
+
+    def _handle_inner_graph_built(self, event: Dict[str, Any]) -> None:
+        """Handle inner_graph_built event by updating node relationships."""
+        if not self.conn:
+            logger.error(
+                "Database connection is not available. Cannot handle inner_graph_built event."
+            )
+            return
+        payload = event.get("payload", {})
+        outer_node_id = payload.get("node_id")
+        inner_node_ids = payload.get("node_ids", [])
+
+        if not outer_node_id or not inner_node_ids:
+            logger.warning(
+                f"inner_graph_built event missing node_id or node_ids: {event.get('event_id')}"
+            )
+            return
+
+        # Update all inner nodes to point to this outer node
+        # Use parameter substitution for security
+        placeholders = ",".join("?" * len(inner_node_ids))
+        update_sql = f"""
+            UPDATE nodes
+            SET outer_node_id = ?,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE node_id IN ({placeholders})
+        """
+
+        params = [outer_node_id] + inner_node_ids
+
+        try:
+            cursor = self.conn.execute(update_sql, params)
+            if cursor.rowcount != len(inner_node_ids):
+                logger.warning(
+                    f"Expected to update {len(inner_node_ids)} inner nodes for outer node {outer_node_id}, but updated {cursor.rowcount}. Event: {event.get('event_id')}"
+                )
+            logger.debug(
+                f"Updated outer_node_id for {cursor.rowcount} inner nodes of {outer_node_id}."
+            )
+        except sqlite3.Error as e:
+            logger.error(
+                f"Error updating inner nodes for {outer_node_id}: {e}", exc_info=True
+            )
+            # Raise here to trigger rollback in store_event
+            raise
 
     def _handle_plan_received(self, event: Dict):
         """Handle plan_received event by storing the raw plan data in graph_plans table."""
