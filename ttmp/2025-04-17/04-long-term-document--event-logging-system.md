@@ -2,34 +2,56 @@
 
 ## Overview
 
-The Recursive Agent Event Logging System provides real-time visibility into the execution of the agent through a Redis-based event streaming architecture. This document describes the system design, event schemas, and instructions for developers who want to build enhanced UI visualizations for monitoring agent runs.
+The Recursive Agent Event Logging System provides real-time visibility into the execution of the agent through a Redis-based event streaming architecture, backed by a persistent SQLite database. This document describes the system design, event schemas, database structure, and instructions for developers who want to build enhanced UI visualizations for monitoring agent runs.
 
 ## System Architecture
 
-The event logging system consists of three main components:
+The event logging system consists of several main components:
 
-1. **Event Bus** (`recursive/utils/event_bus.py`): A Redis-based pub/sub mechanism that handles the emission and delivery of events from the agent to consumers.
-2. **Instrumentation Points**: Strategic locations in the codebase where events are emitted to track agent execution.
-3. **WebSocket Server** (`recursive/utils/ws_server.py`): A FastAPI server that reads events from Redis and forwards them to connected web clients and serves the React UI.
+1.  **Event Bus** (`recursive/utils/event_bus.py`): Handles the emission of events from the agent.
+2.  **Instrumentation Points**: Strategic locations in the codebase where events are emitted to track agent execution using the Event Bus.
+3.  **Redis Stream**: (`agent_events` by default) Acts as the message broker for real-time event distribution.
+4.  **SQLite Database**: (`runs/events.db` by default) Persistently stores all events, node data, and graph structure for analysis and session replay.
+5.  **Database Manager** (`recursive/utils/db_manager.py`): Manages the SQLite connection, schema creation, and data storage/retrieval logic.
+6.  **WebSocket Server** (`recursive/utils/ws_server.py`): A FastAPI server that:
+    - Reads events from the Redis stream.
+    - Stores events and related graph data into the SQLite database via the `DatabaseManager`.
+    - Updates in-memory state managers (`EventStateManager`, `GraphStateManager`) for real-time API access.
+    - Optionally reloads the latest run state from the database on startup.
+    - Forwards live events to connected WebSocket clients.
+    - Serves the React UI.
 
 ```mermaid
-graph LR
-    A[Agent Components] -- Publishes --> B(EventBus);
-    B -- Pushes (XADD) --> C(Redis Stream: agent_events);
-    D[WebSocket Server] -- Reads (XREAD) --> C;
-    D -- Sends --> E(WebSocket Clients);
-    F[Browser UI] -- Connects --> E;
+graph TD
+    A[Agent Components] -- Publishes --> B(EventBus)
+    B -- Pushes (XADD) --> C(Redis Stream: agent_events)
+    D[WebSocket Server] -- Reads (XREAD) --> C
+    subgraph WebSocket Server Process
+        D -- Uses --> F[Database Manager]
+        D -- Uses --> G[Event State Manager]
+        D -- Uses --> H[Graph State Manager]
+        D -- Sends --> E(WebSocket Clients)
+        F -- Stores/Loads --> I[(SQLite DB: events.db)]
+        D -- Serves --> J[Browser UI]
+    end
+    E -- Connects --> D
+    J -- Connects --> E
+    J -- Requests API --> D
 ```
 
 ## Core Components and Files
 
-| Component         | File Path                      | Description                                                        |
-| ----------------- | ------------------------------ | ------------------------------------------------------------------ |
-| EventBus          | `recursive/utils/event_bus.py` | Defines event types, schemas, and publish methods                  |
-| WebSocket Server  | `recursive/utils/ws_server.py` | Relays events from Redis to web clients and serves the React UI    |
-| Standalone Server | `server-main.py`               | Entry point for running the WebSocket server as a separate process |
-| React UI Source   | `ui-react/`                    | Source code for the React/Redux/Bootstrap event visualization UI   |
-| Basic UI          | `ui/index.html`                | ~~Simple visualization of event stream~~ (REMOVED)                 |
+| Component         | File Path                                | Description                                                        |
+| ----------------- | ---------------------------------------- | ------------------------------------------------------------------ |
+| EventBus          | `recursive/utils/event_bus.py`           | Defines event types, schemas, and publish methods                  |
+| WebSocket Server  | `recursive/utils/ws_server.py`           | Relays events, stores data, manages state, serves UI               |
+| Database Manager  | `recursive/utils/db_manager.py`          | Handles SQLite connection, schema, storage, retrieval              |
+| Event State Mgr   | `recursive/utils/event_state_manager.py` | Manages in-memory list of events for the current/latest run        |
+| Graph State Mgr   | `recursive/utils/graph_state_manager.py` | Manages in-memory graph state for the current/latest run           |
+| Standalone Server | `server-main.py`                         | Entry point for running the WebSocket server as a separate process |
+| React UI Source   | `ui-react/`                              | Source code for the React/Redux/Bootstrap event visualization UI   |
+| Basic UI          | `ui/index.html`                          | ~~Simple visualization of event stream~~ (REMOVED)                 |
+| SQLite Database   | `runs/events.db` (default)               | Persistent storage for all runs, events, nodes, and edges          |
 
 ## Event Schema
 
@@ -483,29 +505,35 @@ Emitted when a node computes its final result (typically via `do_action`). Conte
 The `EventBus` class in `recursive/utils/event_bus.py` is responsible for publishing events to Redis. The key methods are:
 
 - `EventBus.publish(event)`: Pushes an event to the Redis stream
-- `set_run_id(run_id)`: Sets a global run ID for all events in this process
 - Helper methods like `emit_step_started()`, `emit_llm_call_completed()`, etc., that create and publish specific event types
+
+**Note:** The system previously used a global `_current_run_id` and a `set_run_id()` function. This has been **removed**. The `run_id` is now exclusively managed and propagated via the `ExecutionContext`.
+
+The `_create_event` helper function in `event_bus.py` now extracts the `run_id` from the `ExecutionContext` passed to the emitter function (e.g., `emit_step_started(..., ctx=...)`).
 
 ## Instrumentation Points in Code
 
-Events are emitted from various key points in the agent's execution flow. To ensure contextual information like the execution `step` number, `node_id`, `task_type`, `task_goal`, and `agent_class` is available when needed, an `ExecutionContext` object (`recursive/common/context.py`) is used. This object acts as a carrier for data that needs to be passed down the call stack, using the immutable `with_` method to add context specific to certain scopes (like agent calls).
+Events are emitted from various key points in the agent's execution flow. To ensure contextual information like the `run_id`, execution `step` number, `node_id`, `task_type`, `task_goal`, and `agent_class` is available when needed, an `ExecutionContext` object (`recursive/common/context.py`) is used. This object acts as a carrier for data that needs to be passed down the call stack, using the immutable `with_` method to add context specific to certain scopes (like agent calls).
 
 ### Propagating ExecutionContext
 
-The `ExecutionContext` object is propagated down the call stack as follows:
+The `ExecutionContext` object, including the crucial `run_id`, is propagated down the call stack as follows:
 
-1.  **`GraphRunEngine.forward_one_step_not_parallel`**: Receives the `step` number. Creates an initial `ExecutionContext` instance (`ctx`) containing `step`, `node_id`, `task_type`, and `task_goal` from the current node.
-2.  **`AbstractNode.next_action_step`**: Receives `ctx`. Creates `action_step_ctx = ctx.with_(action_name=..., node_status=..., node_next_status=...)`. Passes `action_step_ctx` to `do_action`.
-3.  **`AbstractNode.do_action`**: Receives `action_step_ctx`. Passes it down to the agent's `forward` method.
-4.  **Agent `forward` Methods (e.g., `SimpleExecutor.forward`)**: Receives `ctx`. Passes it down to helper methods or LLM/tool calls.
-5.  **`Agent.call_llm`**: Receives `ctx`. Creates `agent_ctx = ctx.with_(agent_class=self.__class__.__name__)`. Passes `agent_ctx` to the `emit_llm_call_started` and `emit_llm_call_completed` functions.
-6.  **Agent methods invoking tools (e.g., potentially `SearchAgent.chat`)**: Should receive `ctx`, create `agent_ctx = ctx.with_(agent_class=self.__class__.__name__)`, and pass `agent_ctx` to the `ActionExecutor` call.
-7.  **`ActionExecutor.__call__`**: Receives `ctx` (expected to contain `agent_class` from the calling agent). Passes `ctx` to `emit_tool_invoked` and `emit_tool_returned`.
-8.  **Other Node Methods (`plan2graph`, `do_exam`)**: Receive `ctx` and pass it down. May use `ctx.with_(...)` to add node-specific context (`node_id`, `task_type`) if needed for specific event emissions within those methods (like graph building events).
-9.  **Event Emission (`emit_*` functions)**: Receive `ctx`. Pass it to `_create_event`.
-10. **`_create_event`**: Receives `ctx`. If `ctx` is present, it iterates through known context fields (`step`, `node_id`, `task_type`, `task_goal`, `agent_class`, `action_name`, `node_status`, `node_next_status`) and adds any non-null value to the event payload _if that key is not already present in the payload_.
+1.  **`recursive/main.py`**: A unique `run_id` is generated. An initial `ExecutionContext` (`initial_ctx`) is created containing this `run_id`.
+2.  **`story_writing()` / `report_writing()`**: These functions receive `initial_ctx` as an argument.
+3.  **`GraphRunEngine.__init__`**: Receives `initial_ctx` from `story_writing` or `report_writing` and stores it as `self.initial_ctx`.
+4.  **`GraphRunEngine.forward_one_step_not_parallel`**: Receives the `step` number. Creates the context for the current step (`ctx`) by calling `self.initial_ctx.with_(step=..., node_id=..., ...)`. This ensures the `run_id` from the initial context is carried forward into the step's context.
+5.  **`AbstractNode.next_action_step`**: Receives `ctx` (containing `run_id`, `step`, etc.). Creates `action_step_ctx = ctx.with_(action_name=..., node_status=..., node_next_status=...)`. Passes `action_step_ctx` to `do_action`.
+6.  **`AbstractNode.do_action`**: Receives `action_step_ctx`. Passes it down to the agent's `forward` method.
+7.  **Agent `forward` Methods (e.g., `SimpleExecutor.forward`)**: Receives `ctx`. Passes it down to helper methods or LLM/tool calls.
+8.  **`Agent.call_llm`**: Receives `ctx`. Creates `agent_ctx = ctx.with_(agent_class=self.__class__.__name__)`. Passes `agent_ctx` to the `emit_llm_call_started` and `emit_llm_call_completed` functions.
+9.  **Agent methods invoking tools (e.g., potentially `SearchAgent.chat`)**: Should receive `ctx`, create `agent_ctx = ctx.with_(agent_class=self.__class__.__name__)`, and pass `agent_ctx` to the `ActionExecutor` call.
+10. **`ActionExecutor.__call__`**: Receives `ctx` (expected to contain `agent_class` from the calling agent). Passes `ctx` to `emit_tool_invoked` and `emit_tool_returned`.
+11. **Other Node Methods (`plan2graph`, `do_exam`)**: Receive `ctx` and pass it down. May use `ctx.with_(...)` to add node-specific context (`node_id`, `task_type`) if needed for specific event emissions within those methods (like graph building events).
+12. **Event Emission (`emit_*` functions)**: Receive `ctx`. Pass it to `_create_event`.
+13. **`_create_event`**: Receives `ctx`. Extracts `run_id` from `ctx` if available. It also iterates through other known context fields (`step`, `node_id`, `task_type`, `task_goal`, `agent_class`, `action_name`, `node_status`, `node_next_status`) and adds any non-null value to the event payload _if that key is not already present in the payload_.
 
-This explicit passing and enrichment ensures that relevant context attributes are available deep within the agent logic for event emission without relying on global state.
+This explicit passing and enrichment ensures that the `run_id` and other relevant context attributes are available deep within the agent logic for event emission without relying on global state.
 
 ### Event Emission Table
 
@@ -525,16 +553,96 @@ This explicit passing and enrichment ensures that relevant context attributes ar
 | `inner_graph_built`     | `recursive/node/abstract.py`                   | `plan2graph`                    | End of graph building         |
 | `node_result_available` | `recursive/node/abstract.py`                   | `do_action`                     | Node action produced result   |
 
+## Database Storage (SQLite)
+
+To ensure persistence and enable analysis of past runs, all events, along with the constructed graph data (nodes and edges), are stored in a SQLite database managed by the `DatabaseManager` class.
+
+### Database Schema
+
+The schema is designed to capture all event data and the relationships between runs, nodes, and edges.
+
+```sql
+-- Base events table storing common fields
+CREATE TABLE events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_id TEXT NOT NULL,          -- UUID from original event
+    run_id TEXT NOT NULL,            -- Groups events by agent run
+    event_type TEXT NOT NULL,        -- One of the 14 event types
+    timestamp TEXT NOT NULL,         -- ISO format timestamp
+    payload JSON NOT NULL,           -- Full event payload as JSON
+    node_id TEXT,                    -- Optional link to related node
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Table to track runs for easier session management
+CREATE TABLE runs (
+    run_id TEXT PRIMARY KEY,
+    start_time TEXT NOT NULL,        -- From run_started event
+    end_time TEXT,                   -- From run_finished event
+    status TEXT NOT NULL,            -- 'running', 'completed', 'error'
+    total_steps INTEGER,
+    total_nodes INTEGER,
+    error_message TEXT,              -- If status is 'error'
+    root_node_id TEXT,               -- Link to root node of the run
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Table to store nodes
+CREATE TABLE nodes (
+    node_id TEXT PRIMARY KEY,        -- UUID of the node
+    run_id TEXT NOT NULL,            -- Link to parent run
+    node_nid TEXT NOT NULL,          -- Hierarchical ID (e.g., "1.2.3")
+    node_type TEXT NOT NULL,         -- PLAN_NODE, EXECUTE_NODE, etc.
+    task_type TEXT NOT NULL,         -- COMPOSITION, REASONING, etc.
+    task_goal TEXT NOT NULL,         -- Node's goal/purpose
+    status TEXT NOT NULL,            -- Current node status
+    layer INTEGER NOT NULL,          -- Node's depth in the tree
+    outer_node_id TEXT,              -- Parent node in hierarchy (if any)
+    root_node_id TEXT NOT NULL,      -- Top-level node of this branch
+    result JSON,                     -- Node's final output (if any)
+    metadata JSON,                   -- Additional node properties
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (run_id) REFERENCES runs(run_id),
+    FOREIGN KEY (outer_node_id) REFERENCES nodes(node_id)
+);
+
+-- Table to store node relationships (edges)
+CREATE TABLE edges (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id TEXT NOT NULL,            -- Link to parent run
+    parent_node_id TEXT NOT NULL,    -- Source node
+    child_node_id TEXT NOT NULL,     -- Target node
+    parent_nid TEXT NOT NULL,        -- Parent's hierarchical ID
+    child_nid TEXT NOT NULL,         -- Child's hierarchical ID
+    metadata JSON,                   -- Edge properties (if any)
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (run_id) REFERENCES runs(run_id),
+    FOREIGN KEY (parent_node_id) REFERENCES nodes(node_id),
+    FOREIGN KEY (child_node_id) REFERENCES nodes(node_id)
+);
+```
+
+_(Indexes and Views are defined in `db_manager.py` for performance and querying ease)_
+
+### Data Flow
+
+1.  An event occurs in the agent and is published to Redis via `EventBus`.
+2.  The `redis_listener` in `ws_server.py` reads the event from Redis.
+3.  The event is passed to `db_manager.store_event(event)`.
+4.  `store_event` inserts the base event record into the `events` table.
+5.  Based on the `event_type`, specific handler methods (`_handle_run_started`, `_handle_node_created`, `_handle_edge_added`, etc.) are called to insert or update records in the `runs`, `nodes`, and `edges` tables.
+
 ## WebSocket Server Implementation
 
-The WebSocket server (`recursive/utils/ws_server.py`) contains these key components:
+The WebSocket server (`recursive/utils/ws_server.py`) integrates the Redis listener, Database Manager, State Managers, and WebSocket broadcasting:
 
-- `redis_listener(redis_client)`: Asynchronous function that reads from Redis stream and broadcasts to clients
-- `websocket_endpoint(websocket)`: Handles WebSocket connections and message passing
-- `run_server()`: Starts the Uvicorn server with the FastAPI app
-- `start_ws_thread()`: Starts the server in a background thread (used in integrated mode)
-
-The WebSocket URL endpoint is: `/ws/events` (e.g., `ws://localhost:9999/ws/events`)
+- **Startup (`startup_event`)**: Initializes the `DatabaseManager`. If `RELOAD_LATEST_SESSION` is true, it loads events from the latest run from the DB and replays them into the `EventStateManager` and `GraphStateManager` to restore the server's in-memory state. Connects to Redis and starts the `redis_listener` task.
+- **Redis Listener (`redis_listener`)**: Continuously reads new events from Redis. For each event, it calls `db_manager.store_event()` to persist the data, then updates the in-memory state managers (`event_manager`, `graph_manager`), and finally broadcasts the raw event string to all connected WebSocket clients.
+- **WebSocket Endpoint (`websocket_endpoint`)**: Handles new client connections. If historical events were loaded during startup, they are sent to the newly connected client.
+- **API Endpoints (`/api/...`)**: Serve data directly from the in-memory `EventStateManager` and `GraphStateManager`, reflecting either a live run or the reloaded state.
+- **Shutdown (`shutdown_event`)**: Cancels the Redis listener task and closes the SQLite database connection via `db_manager.close()`.
 
 ## Deployment Options
 
@@ -547,19 +655,32 @@ The standalone mode provides better reliability, especially for long-running age
 
 ### Starting the System
 
+The system can be configured using environment variables:
+
+- `SQLITE_DB_PATH`: Path to the SQLite database file (default: `runs/events.db`).
+- `RELOAD_LATEST_SESSION`: Set to `true` to load the state from the latest run in the database when the server starts (default: `false`).
+
 **Integrated Mode:**
 
 ```bash
+# Run agent with integrated server, persisting to default DB
+python -m recursive.main --mode report --filename input.jsonl --output-filename output.jsonl --model gpt-4o
+
+# Run agent, persisting to a specific DB and reloading state on start
+export SQLITE_DB_PATH=/path/to/my_runs.db
+export RELOAD_LATEST_SESSION=true
 python -m recursive.main --mode report --filename input.jsonl --output-filename output.jsonl --model gpt-4o
 ```
 
 **Standalone Mode:**
 
 ```bash
-# Start the WebSocket server in a separate terminal
+# Start the WebSocket server, reloading latest state from default DB
+export RELOAD_LATEST_SESSION=true
 python server-main.py
 
-# Run the agent without starting the WebSocket server
+# In another terminal, run the agent without the integrated server
+# It will still publish events to Redis, which the standalone server picks up
 python -m recursive.main --no-ws-server --mode report --filename input.jsonl --output-filename output.jsonl --model gpt-4o
 ```
 
@@ -633,7 +754,8 @@ This frontend implementation enables real-time visualization of the graph buildi
 
 ### Technical Guidelines
 
-1. **WebSocket Connection**: The React UI connects to `ws://localhost:9999/ws/events` (or the configured host/port) using the native WebSocket API managed via RTK Query.
+1. **WebSocket Connection**: The React UI connects to `ws://localhost:9999/ws/events` (or the configured
+   host/port) using the native WebSocket API managed via RTK Query.
 
    - Implementation example in `ui-react/src/features/events/eventsApi.ts`
 
@@ -641,11 +763,8 @@ This frontend implementation enables real-time visualization of the graph buildi
 
    - Each message is a serialized `Event` object
 
-3. **State Management**: Maintain a client-side state model that gets updated with incoming events.
-
-   - Track node statuses
-   - Build graph representation
-   - Maintain statistics on LLM and tool usage
+3. **State Management**: The UI should maintain its own state, updated by incoming WebSocket events. It can also fetch the complete current graph/event state via the `/api/graph` and `/api/events` endpoints, which reflect the server's in-memory state (potentially reloaded from the DB).
+4. **Session Reload**: If the server is started with `RELOAD_LATEST_SESSION=true`, the UI will initially receive a batch of historical events from the latest run via WebSocket before live events start streaming.
 
 For UI developers: the current UI implementation in `ui-react/` provides a functional table view example. Use this as a starting point for building more sophisticated UI components or visualizations.
 
