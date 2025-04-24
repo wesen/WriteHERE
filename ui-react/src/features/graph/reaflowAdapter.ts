@@ -1,4 +1,3 @@
-import { MyNodeData } from "../../components/reaflow/CustomNode";
 import { NodeData, EdgeData } from "reaflow"; // Import Reaflow types
 import { createSelector } from "@reduxjs/toolkit";
 import { selectAllNodes, selectAllEdges } from "./selectors";
@@ -12,21 +11,12 @@ import { RootState } from "../../store";
 const selectGraphNodes = (state: RootState) => selectAllNodes(state);
 const selectGraphEdges = (state: RootState) => selectAllEdges(state);
 
-// Helper to create a map for quick node lookup
-const createNodeMap = (nodes: GraphNode[]) => {
-  const map = new Map<string, GraphNode>();
-  nodes.forEach((node) => map.set(node.id, node));
-  return map;
-};
-
 export const selectReaflowGraph = createSelector(
   [selectGraphNodes, selectGraphEdges],
   (
     nodes: GraphNode[],
     edges: GraphEdge[]
   ): { nodes: NodeData[]; edges: EdgeData[] } => {
-    const nodeMap = createNodeMap(nodes);
-
     // Map GraphNode to Reaflow NodeData, initially without parent
     const rNodesIntermediate = nodes.map((n) => ({
       id: n.id,
@@ -71,8 +61,8 @@ export const selectReaflowGraph = createSelector(
 
     // Create edges, adding parent property for nested edges
     const rEdges: EdgeData[] = edges.map((e) => {
-      const sourceNode = nodeMap.get(e.parent);
-      const targetNode = nodeMap.get(e.child);
+      // const sourceNode = nodeMap.get(e.parent);
+      // const targetNode = nodeMap.get(e.child);
 
       // Find the Reaflow parent IDs for source and target
       const sourceRNode = rNodeMap.get(e.parent);

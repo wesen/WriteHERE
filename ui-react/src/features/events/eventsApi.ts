@@ -43,6 +43,7 @@ export interface LlmCallStartedPayload {
   prompt_preview: string;
   step?: number | null; // Added optional step
   node_id?: string | null;
+  action_name?: string | null; // Added optional action_name
 }
 
 export interface TokenUsage {
@@ -63,6 +64,7 @@ export interface LlmCallCompletedPayload {
   step?: number | null; // Added optional step
   node_id?: string | null; // Optional
   token_usage?: TokenUsage | null; // Optional
+  action_name?: string | null; // Added optional action_name
 }
 
 export interface ToolInvokedPayload {
@@ -100,7 +102,7 @@ export interface NodeCreatedPayload {
 export interface PlanReceivedPayload {
   node_id: string;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  raw_plan: any[]; // Using any[] since plan structure can vary
+  raw_plan: unknown[]; // Using unknown[] since plan structure can vary
   step?: number | null;
   task_type?: string | null;
   task_goal?: string | null;
@@ -276,7 +278,7 @@ export enum ConnectionStatus {
 }
 
 // Add this helper for logging
-const logWs = (message: string, ...args: any[]) => {
+const logWs = (message: string, ...args: unknown[]) => {
   console.log(`[WS ${new Date().toISOString()}] ${message}`, ...args);
 };
 

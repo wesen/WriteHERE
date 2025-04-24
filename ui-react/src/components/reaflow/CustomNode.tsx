@@ -1,5 +1,4 @@
 import React from 'react';
-import { NodeChildProps } from 'reaflow';
 // Removed: import { MyNodeData } from './App'; -> This type will be defined in reaflowAdapter
 import { nodeConfig } from './nodeConfig';
 

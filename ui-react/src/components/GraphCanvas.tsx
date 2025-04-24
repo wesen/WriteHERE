@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from 'react';
 import { Canvas, Node, Edge, ElkCanvasLayoutOptions } from 'reaflow';
-import { useSelector, useDispatch } from 'react-redux';
+import { useSelector } from 'react-redux';
 import { selectReaflowGraph } from '../features/graph/reaflowAdapter';
 import { CustomNode } from './reaflow/CustomNode';
 import './reaflow/ReaflowCanvas.css';
@@ -94,7 +94,7 @@ export const GraphCanvas: React.FC = () => {
           <Node>
             {(p) => (
               <CustomNode
-                nodeProps={p}
+                nodeProps={p as any}
                 selectedNode={selectedNodeId}
                 onNodeClick={onNodeClick}
               />

@@ -1,12 +1,13 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { useGetEventsQuery, ConnectionStatus, AgentEvent } from '../features/events/eventsApi';
-import { Table, Spinner, Alert, Badge } from 'react-bootstrap';
-import { Play, CheckCircle, ArrowRight, Clock, Zap, Database, Search, AlertCircle, GitCommit, FileCode, Network, PlusCircle, GitFork, FileText } from 'lucide-react';
+import { Table, Spinner, Alert } from 'react-bootstrap';
 import { isEventType } from '../helpers/eventType'; // Import the type guard
-import EventDetailModal from './EventDetailModal';
 import './styles.css'; // We'll add a separate styles file
 import { useAppDispatch } from '../store';
 import { pushModal } from '../features/ui/modalStackSlice';
+import { formatTimestamp, RenderClickableNodeId } from '../helpers/formatters.tsx'; // Use shared formatter
+import EventTypeBadge from './EventTypeBadge.tsx'; // Use shared badge
+import EventPayloadDetails from './EventPayloadDetails.tsx'; // Use shared details renderer
 
 // Helper function to extract common IDs or return N/A
 const getEventStep = (event: AgentEvent): number | string => {
@@ -26,7 +27,7 @@ const getEventStep = (event: AgentEvent): number | string => {
     return 'N/A';
 }
 
-const getEventNodeId = (event: AgentEvent): string => {
+const getEventNodeIdInfo = (event: AgentEvent): { id: string | null, text: string } => {
     if (isEventType('step_started')(event) || 
         isEventType('step_finished')(event) ||
         isEventType('node_status_changed')(event) ||
@@ -37,211 +38,26 @@ const getEventNodeId = (event: AgentEvent): string => {
         isEventType("node_created")(event) ||
         isEventType("plan_received")(event) ||
         isEventType("node_result_available")(event)) {
-        return event.payload.node_id?.substring(0, 8) || 'N/A';
+        const id = event.payload.node_id;
+        return { id: id ?? null, text: id ? id.substring(0, 8) : 'N/A' };
     }
     
     if (isEventType("node_added")(event)) {
-        return event.payload.added_node_id?.substring(0, 8) || 'N/A';
+        const id = event.payload.added_node_id;
+        return { id: id, text: id ? id.substring(0, 8) : 'N/A' };
     }
     
     if (isEventType("edge_added")(event)) {
-        return `${event.payload.parent_node_id?.substring(0, 4)}→${event.payload.child_node_id?.substring(0, 4)}`;
+        // For edges, maybe return the owner or null, display simplified text
+        return { id: event.payload.graph_owner_node_id, text: `${event.payload.parent_node_nid}→${event.payload.child_node_nid}` };
     }
     
     if (isEventType("inner_graph_built")(event)) {
-        return event.payload.node_id?.substring(0, 8) || 'N/A';
+         const id = event.payload.node_id;
+        return { id: id, text: id ? id.substring(0, 8) : 'N/A' };
     }
     
-    return 'N/A';
-}
-
-// Event type to icon/color mapping (similar to prototype)
-const eventTypeConfig = {
-    step_started: { icon: Play, color: 'text-blue-500', bgColor: 'bg-blue-100', bsVariant: 'primary-subtle', bsTextColor: 'primary' },
-    step_finished: { icon: CheckCircle, color: 'text-green-500', bgColor: 'bg-green-100', bsVariant: 'success-subtle', bsTextColor: 'success' },
-    node_status_change: { icon: ArrowRight, color: 'text-purple-500', bgColor: 'bg-purple-100', bsVariant: 'info-subtle', bsTextColor: 'info' }, // Changed to info for Bootstrap
-    llm_call_started: { icon: Clock, color: 'text-yellow-500', bgColor: 'bg-yellow-100', bsVariant: 'warning-subtle', bsTextColor: 'warning' },
-    llm_call_completed: { icon: Zap, color: 'text-yellow-600', bgColor: 'bg-yellow-100', bsVariant: 'warning-subtle', bsTextColor: 'warning' }, // Keep same as started for simplicity
-    tool_invoked: { icon: Database, color: 'text-indigo-500', bgColor: 'bg-indigo-100', bsVariant: 'secondary-subtle', bsTextColor: 'secondary' }, // Changed to secondary
-    tool_returned: { icon: Database, color: 'text-indigo-700', bgColor: 'bg-indigo-100', bsVariant: 'secondary-subtle', bsTextColor: 'secondary' }, // Keep same as invoked
-    search_completed: { icon: Search, color: 'text-blue-700', bgColor: 'bg-blue-100', bsVariant: 'primary-subtle', bsTextColor: 'primary' }, // Reuse primary
-    
-    // New event types
-    node_created: { icon: GitCommit, color: 'text-purple-600', bgColor: 'bg-purple-100', bsVariant: 'purple-subtle', bsTextColor: 'info' },
-    plan_received: { icon: FileCode, color: 'text-teal-600', bgColor: 'bg-teal-100', bsVariant: 'info-subtle', bsTextColor: 'info' },
-    node_added: { icon: PlusCircle, color: 'text-green-600', bgColor: 'bg-green-100', bsVariant: 'success-subtle', bsTextColor: 'success' },
-    edge_added: { icon: GitFork, color: 'text-indigo-600', bgColor: 'bg-indigo-100', bsVariant: 'secondary-subtle', bsTextColor: 'secondary' },
-    inner_graph_built: { icon: Network, color: 'text-blue-600', bgColor: 'bg-blue-100', bsVariant: 'primary-subtle', bsTextColor: 'primary' },
-    node_result_available: { icon: FileText, color: 'text-orange-600', bgColor: 'bg-orange-100', bsVariant: 'warning-subtle', bsTextColor: 'warning' },
-    
-    default: { icon: AlertCircle, color: 'text-gray-500', bgColor: 'bg-gray-100', bsVariant: 'light', bsTextColor: 'dark' }
-};
-
-// Status color mapping (using Bootstrap text colors)
-const statusColorMap: { [key: string]: string } = {
-    NOT_READY: 'text-secondary',
-    READY: 'text-primary',
-    DOING: 'text-warning',
-    FINISH: 'text-success',
-    FAILED: 'text-danger',
-    PLAN_DONE: 'text-info', // Example, adjust as needed
-    NEED_UPDATE: 'text-warning',
-    FINAL_TO_FINISH: 'text-success',
-    NEED_POST_REFLECT: 'text-primary',
-};
-
-// Utility function to format timestamp
-function formatTimestamp(isoString: string): string {
-    try {
-        const date = new Date(isoString);
-        return date.toLocaleTimeString("en-US", {
-            hour: 'numeric',
-            minute: '2-digit',
-            second: '2-digit',
-            hour12: true 
-        }).toLowerCase();
-    } catch (e) {
-        console.error("Error formatting timestamp:", isoString, e);
-        return isoString; // Fallback
-    }
-}
-
-// Utility to render payload details nicely using the type guard
-function renderPayloadDetails(event: AgentEvent): React.ReactNode {
-    if (isEventType("step_started")(event)) {
-        return <span className="text-muted text-truncate d-inline-block" style={{ maxWidth: '500px' }}>{event.payload.node_goal}</span>;
-    }
-
-    if (isEventType("step_finished")(event)) {
-        const statusClass = statusColorMap[event.payload.status_after] || 'text-dark';
-        return (
-            <div>
-                Action: <span className="fw-medium">{event.payload.action_name}</span>,
-                Status: <span className={`fw-medium ${statusClass}`}>{event.payload.status_after}</span>,
-                Duration: <span className="fw-medium">{event.payload.duration_seconds?.toFixed(2)}s</span>
-            </div>
-        );
-    }
-
-    if (isEventType("node_status_changed")(event)) {
-        const oldStatusClass = statusColorMap[event.payload.old_status] || 'text-dark';
-        const newStatusClass = statusColorMap[event.payload.new_status] || 'text-dark';
-        return (
-            <div className="d-flex align-items-center">
-                <span className={oldStatusClass}>{event.payload.old_status}</span>
-                <ArrowRight size={14} className="mx-2 text-muted" />
-                <span className={newStatusClass}>{event.payload.new_status}</span>
-            </div>
-        );
-    }
-
-    if (isEventType("llm_call_started")(event)) {
-        return (
-            <div className="text-truncate" style={{ maxWidth: '500px' }}>
-                Agent: <span className="fw-medium">{event.payload.agent_class}</span>,
-                Model: <span className="fw-medium">{event.payload.model}</span>
-            </div>
-        );
-    }
-
-    if (isEventType("llm_call_completed")(event)) {
-        return (
-            <div className="text-truncate" style={{ maxWidth: '500px' }}>
-                Model: <span className="fw-medium">{event.payload.model}</span>,
-                Agent: <span className="fw-medium">{event.payload.agent_class}</span>,
-                Duration: <span className="fw-medium">{event.payload.duration_seconds?.toFixed(2)}s</span>
-                {event.payload.token_usage && (
-                    <span className="ms-2 small text-muted">
-                        (Tokens: {event.payload.token_usage.prompt_tokens}p + {event.payload.token_usage.completion_tokens}c)
-                    </span>
-                )}
-                {event.payload.error && <div className="text-danger small mt-1">Error: {event.payload.error}</div>}
-            </div>
-        );
-    }
-
-    if (isEventType("tool_invoked")(event)) {
-        return (
-            <div className="text-truncate" style={{ maxWidth: '500px' }}>
-                Tool: <span className="fw-medium">{event.payload.tool_name}</span>,
-                API: <span className="fw-medium">{event.payload.api_name}</span>
-            </div>
-        );
-    }
-
-    if (isEventType("tool_returned")(event)) {
-        return (
-            <div className="text-truncate" style={{ maxWidth: '500px' }}>
-                Tool: <span className="fw-medium">{event.payload.tool_name}</span>,
-                API: <span className="fw-medium">{event.payload.api_name}</span>,
-                State: <span className={`fw-medium ${event.payload.state === 'SUCCESS' ? 'text-success' : 'text-danger'}`}>{event.payload.state}</span>,
-                Duration: <span className="fw-medium">{event.payload.duration_seconds?.toFixed(2)}s</span>
-                {event.payload.error && <div className="text-danger small mt-1">Error: {event.payload.error}</div>}
-            </div>
-        );
-    }
-
-    // New event type handlers
-    if (isEventType("node_created")(event)) {
-        return (
-            <div className="text-truncate" style={{ maxWidth: '500px' }}>
-                NID: <span className="fw-medium">{event.payload.node_nid}</span>,
-                Type: <span className="fw-medium">{event.payload.node_type}</span>,
-                Task: <span className="fw-medium">{event.payload.task_type}</span>,
-                Layer: <span className="fw-medium">{event.payload.layer}</span>
-            </div>
-        );
-    }
-
-    if (isEventType("plan_received")(event)) {
-        const planLength = event.payload.raw_plan?.length || 0;
-        return (
-            <div className="text-truncate" style={{ maxWidth: '500px' }}>
-                Plan with <span className="fw-medium">{planLength}</span> task(s)
-            </div>
-        );
-    }
-
-    if (isEventType("node_added")(event)) {
-        return (
-            <div className="text-truncate" style={{ maxWidth: '500px' }}>
-                Node <span className="fw-medium">{event.payload.added_node_nid}</span> added to graph
-            </div>
-        );
-    }
-
-    if (isEventType("edge_added")(event)) {
-        return (
-            <div className="text-truncate" style={{ maxWidth: '500px' }}>
-                Edge: <span className="fw-medium">{event.payload.parent_node_nid}</span> → <span className="fw-medium">{event.payload.child_node_nid}</span>
-            </div>
-        );
-    }
-
-    if (isEventType("inner_graph_built")(event)) {
-        return (
-            <div className="text-truncate" style={{ maxWidth: '500px' }}>
-                Graph built with <span className="fw-medium">{event.payload.node_count}</span> nodes and <span className="fw-medium">{event.payload.edge_count}</span> edges
-            </div>
-        );
-    }
-
-    if (isEventType("node_result_available")(event)) {
-        return (
-            <div className="text-truncate" style={{ maxWidth: '500px' }}>
-                Action: <span className="fw-medium">{event.payload.action_name}</span>,
-                Result: <span className="text-muted small">{event.payload.result_summary.substring(0, 100)}...</span>
-            </div>
-        );
-    }
-
-    // Fallback for unknown event types
-    // Now event.payload is correctly typed as Record<string, unknown>
-    return (
-        <pre style={{ maxHeight: '100px', overflowY: 'auto', whiteSpace: 'pre-wrap', wordBreak: 'break-all', fontSize: '0.85em', margin: 0 }}>
-            {JSON.stringify(event.payload, null, 2)}
-        </pre>
-    );
+    return { id: null, text: 'N/A' };
 }
 
 const EventTable: React.FC = () => {
@@ -255,6 +71,10 @@ const EventTable: React.FC = () => {
     // Handle opening the modal with a specific event
     const handleEventClick = (event: AgentEvent) => {
         dispatch(pushModal({ type: 'event', params: { eventId: event.event_id } }));
+    };
+
+    const handleNodeClick = (nodeId: string) => {
+        dispatch(pushModal({ type: 'node', params: { nodeId } }));
     };
 
     if (isLoading && !data) {
@@ -296,11 +116,7 @@ const EventTable: React.FC = () => {
                         </tr>
                     )}
                     {reversedEvents.map((event) => {
-                        const eventTypeKey = event.event_type as keyof typeof eventTypeConfig;
-                        const config = Object.prototype.hasOwnProperty.call(eventTypeConfig, eventTypeKey)
-                            ? eventTypeConfig[eventTypeKey] 
-                            : eventTypeConfig.default;
-                        const IconComponent = config.icon;
+                        const nodeIdInfo = getEventNodeIdInfo(event);
                         
                         return (
                             <tr 
@@ -311,16 +127,20 @@ const EventTable: React.FC = () => {
                             >
                                 <td className="px-3 py-2 text-muted small text-nowrap">{formatTimestamp(event.timestamp)}</td>
                                 <td className="px-3 py-2">
-                                    <Badge pill bg={config.bsVariant} text={config.bsTextColor as ("primary" | "secondary" | "success" | "danger" | "warning" | "info" | "light" | "dark")} className="d-inline-flex align-items-center fw-medium">
-                                        <IconComponent size={12} className="me-1" />
-                                        {event.event_type.toLowerCase().replace(/_/g, ' ')}
-                                    </Badge>
+                                    <EventTypeBadge eventType={event.event_type} />
                                 </td>
                                 <td className="px-3 py-2 text-muted small font-monospace text-nowrap">{event.run_id?.substring(0, 8) || 'N/A'}</td>
                                 <td className="px-3 py-2 text-muted small text-center">{getEventStep(event)}</td>
-                                <td className="px-3 py-2 text-muted small font-monospace text-nowrap">{getEventNodeId(event)}</td>
+                                <td className="px-3 py-2 text-muted small font-monospace text-nowrap">
+                                    <RenderClickableNodeId 
+                                        nodeId={nodeIdInfo.id} 
+                                        label={nodeIdInfo.text} 
+                                        truncate={false}
+                                        onNodeClick={handleNodeClick} 
+                                    />
+                                </td>
                                 <td className="px-3 py-2 text-muted small text-start">
-                                    {renderPayloadDetails(event)}
+                                    <EventPayloadDetails event={event} onNodeClick={handleNodeClick} />
                                 </td>
                             </tr>
                         );

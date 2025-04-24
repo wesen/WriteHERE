@@ -7,18 +7,11 @@ import { RootState } from '../store';
 import NodeEventDetailPane from './NodeEventDetailPane';
 import { isEventType } from '../helpers/eventType';
 import { ArrowLeft } from 'react-feather';
+import { formatTimestamp, RenderClickableNodeId } from '../helpers/formatters';
 
-// Event type to badge variant mapping
-const eventTypeBadgeVariant: Record<string, string> = {
-  step_started: 'primary',
-  step_finished: 'success',
-  node_status_changed: 'info',
-  llm_call_started: 'warning',
-  llm_call_completed: 'warning',
-  tool_invoked: 'secondary',
-  tool_returned: 'secondary',
-  default: 'light'
-};
+import { statusColorMap, } from '../helpers/eventConstants';
+import EventTypeBadge from './EventTypeBadge';
+import EventPayloadDetails from './EventPayloadDetails';
 
 interface NodeDetailModalProps {
   show: boolean;
@@ -47,13 +40,17 @@ const NodeDetailModal: React.FC<NodeDetailModalProps> = ({
   const nodeEvents = useMemo(() => {
     if (!eventsData || !nodeId) return [];
     return eventsData.events.filter(event => {
-      const p = event.payload as any; // Use 'any' for easier access, ensure type safety if needed
+      // Check payload properties safely without using 'any'
+      const p = event.payload;
+      if (typeof p !== 'object' || p === null) return false; // Ensure payload is an object
+
+      // Check for specific properties before accessing them
       return (
-        p.node_id === nodeId ||
-        p.added_node_id === nodeId ||
-        p.parent_node_id === nodeId ||
-        p.child_node_id === nodeId ||
-        p.graph_owner_node_id === nodeId
+        ('node_id' in p && p.node_id === nodeId) ||
+        ('added_node_id' in p && p.added_node_id === nodeId) ||
+        ('parent_node_id' in p && p.parent_node_id === nodeId) ||
+        ('child_node_id' in p && p.child_node_id === nodeId) ||
+        ('graph_owner_node_id' in p && p.graph_owner_node_id === nodeId)
       );
     }).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()); // Sort newest first
   }, [eventsData, nodeId]);
@@ -67,61 +64,12 @@ const NodeDetailModal: React.FC<NodeDetailModalProps> = ({
     );
   }, [nodeEvents, nodeId]);
 
-  const formatTimestamp = (isoString: string): string => {
-    try {
-      const date = new Date(isoString);
-      return date.toLocaleString('en-US', {
-        hour: 'numeric',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: true,
-        month: 'short',
-        day: 'numeric',
-      });
-    } catch (e) {
-      console.error(`[NodeDetailModal] Error formatting timestamp: ${e}`);
-      return isoString;
-    }
-  };
-
-  const getBadgeVariant = (eventType: string): string => {
-    return eventTypeBadgeVariant[eventType] || eventTypeBadgeVariant.default;
-  };
-
-  // Status color mapping (copied from EventDetailModal for consistency)
-  const statusColorMap: { [key: string]: string } = {
-    NOT_READY: 'secondary',
-    READY: 'primary',
-    PLANNING: 'info',
-    PLANNING_POST_REFLECT: 'info',
-    DOING: 'warning',
-    FINISH: 'success',
-    FAILED: 'danger',
-  };
-
   const handleEventClick = (event: AgentEvent) => {
     if (onEventClick) {
       onEventClick(event.event_id);
     } else {
       setSelectedEvent(event); // Fallback to original behavior
     }
-  };
-
-  // Render a clickable node ID
-  const renderClickableNodeId = (nodeId: string, label?: string, truncate: boolean = true) => {
-    const displayText = truncate ? `${nodeId.substring(0, 8)}...` : nodeId;
-    
-    return onNodeClick ? (
-      <Button
-        variant="link"
-        className="p-0 text-decoration-none" 
-        onClick={() => onNodeClick(nodeId)}
-      >
-        {label || displayText}
-      </Button>
-    ) : (
-      label || displayText
-    );
   };
 
   const handleBackClick = () => {
@@ -152,7 +100,7 @@ const NodeDetailModal: React.FC<NodeDetailModalProps> = ({
         ) : (
           <>
             {/* Node Creation Details */}
-            {nodeCreatedEvent && (
+            {nodeCreatedEvent && isEventType('node_created')(nodeCreatedEvent) && (
               <Card className="mb-3">
                 <Card.Header className="bg-light">
                   <div className="d-flex justify-content-between align-items-center">
@@ -177,12 +125,12 @@ const NodeDetailModal: React.FC<NodeDetailModalProps> = ({
                       <p className="mb-1">
                         <strong>Outer Node:</strong>{' '}
                         {nodeCreatedEvent.payload.outer_node_id 
-                          ? renderClickableNodeId(nodeCreatedEvent.payload.outer_node_id)
+                          ? <RenderClickableNodeId nodeId={nodeCreatedEvent.payload.outer_node_id} onNodeClick={onNodeClick} />
                           : 'N/A'}
                       </p>
                       <p className="mb-1">
                         <strong>Root Node:</strong>{' '}
-                        {renderClickableNodeId(nodeCreatedEvent.payload.root_node_id)}
+                        <RenderClickableNodeId nodeId={nodeCreatedEvent.payload.root_node_id} onNodeClick={onNodeClick} />
                       </p>
                     </Col>
                   </Row>
@@ -239,13 +187,16 @@ const NodeDetailModal: React.FC<NodeDetailModalProps> = ({
                       action
                       onClick={() => handleEventClick(event)}
                       active={selectedEvent?.event_id === event.event_id}
-                      className="d-flex justify-content-between align-items-center"
+                      className="d-flex justify-content-between align-items-start p-2 event-list-item"
                     >
-                      <div>
-                        <Badge bg={getBadgeVariant(event.event_type)} className="me-2">
-                          {event.event_type}
-                        </Badge>
-                        <small className="text-muted">{formatTimestamp(event.timestamp)}</small>
+                      <div className="flex-grow-1 me-2" style={{ minWidth: 0 }}>
+                        <div className="d-flex justify-content-between align-items-center mb-1">
+                          <EventTypeBadge eventType={event.event_type} size="sm" />
+                          <small className="text-muted text-nowrap ms-2">{formatTimestamp(event.timestamp)}</small>
+                        </div>
+                        <div className="event-details-container">
+                           <EventPayloadDetails event={event} onNodeClick={onNodeClick} className="small"/>
+                        </div>
                       </div>
                     </ListGroup.Item>
                   ))

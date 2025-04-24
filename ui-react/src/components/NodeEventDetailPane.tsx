@@ -1,26 +1,12 @@
 import React, { useState } from 'react';
-import { Card, Tab, Nav, Badge, Button } from 'react-bootstrap';
+import { Card, Tab, Nav, Badge } from 'react-bootstrap';
 import { AgentEvent, LlmMessage } from '../features/events/eventsApi';
 import { isEventType } from '../helpers/eventType';
 import { ArrowRight } from 'lucide-react';
 import CodeHighlighter from './SyntaxHighlighter';
+import { statusColorMap } from '../helpers/eventConstants.ts';
 
-// Status color mapping (using Bootstrap text colors)
-const statusColorMap: { [key: string]: string } = {
-  NOT_READY: 'text-secondary',
-  READY: 'text-primary',
-  PLANNING: 'text-info',
-  PLANNING_POST_REFLECT: 'text-info',
-  DOING: 'text-warning',
-  FINISH: 'text-success',
-  FAILED: 'text-danger',
-};
-
-// Helper to format and truncate text previews
-const formatPreview = (text: string, maxLength: number = 500): string => {
-  if (!text) return '';
-  return text.length > maxLength ? text.substring(0, maxLength) + '...' : text;
-};
+import { RenderClickableNodeId } from '../helpers/formatters.tsx';
 
 // Render the LLM prompt messages (removed outer div and adjusted styling)
 const renderPromptMessages = (messages: LlmMessage[]) => {
@@ -55,28 +41,6 @@ interface NodeEventDetailPaneProps {
 const NodeEventDetailPane: React.FC<NodeEventDetailPaneProps> = ({ event, onNodeClick }) => {
   const [activeTab, setActiveTab] = useState('details');
 
-  // Display a shortened Node ID that's clickable if onNodeClick is provided
-  const renderClickableNodeId = (nodeId: string, label?: string, truncate: boolean = true) => {
-    if (!nodeId) return 'N/A';
-    
-    const displayText = truncate ? `${nodeId.substring(0, 8)}...` : nodeId;
-    
-    return onNodeClick ? (
-      <Button
-        variant="link"
-        className="p-0 text-decoration-none"
-        onClick={(e) => {
-          e.stopPropagation();
-          onNodeClick(nodeId);
-        }}
-      >
-        <small>{label || displayText}</small>
-      </Button>
-    ) : (
-      <small>{label || displayText}</small>
-    );
-  };
-
   const hasEventSpecificData = isEventType('llm_call_completed')(event) ||
     isEventType('plan_received')(event) ||
     isEventType('tool_returned')(event);
@@ -90,12 +54,12 @@ const NodeEventDetailPane: React.FC<NodeEventDetailPaneProps> = ({ event, onNode
             <div className="col-md-6">
               <p className="mb-1"><small><strong>Step:</strong> {event.payload.step}</small></p>
               <p className="mb-1">
-                <small><strong>Node ID:</strong> {renderClickableNodeId(event.payload.node_id, undefined, false)}</small>
+                <small><strong>Node ID:</strong> <RenderClickableNodeId nodeId={event.payload.node_id} onNodeClick={onNodeClick} truncate={false} /></small>
               </p>
             </div>
             <div className="col-md-6">
               <p className="mb-1">
-                <small><strong>Root ID:</strong> {renderClickableNodeId(event.payload.root_id)}</small>
+                <small><strong>Root ID:</strong> <RenderClickableNodeId nodeId={event.payload.root_id} onNodeClick={onNodeClick} /></small>
               </p>
             </div>
           </div>
@@ -114,7 +78,7 @@ const NodeEventDetailPane: React.FC<NodeEventDetailPaneProps> = ({ event, onNode
             <div className="col-md-6">
               <p className="mb-1"><small><strong>Step:</strong> {event.payload.step}</small></p>
               <p className="mb-1">
-                <small><strong>Node ID:</strong> {renderClickableNodeId(event.payload.node_id, undefined, false)}</small>
+                <small><strong>Node ID:</strong> <RenderClickableNodeId nodeId={event.payload.node_id} onNodeClick={onNodeClick} truncate={false} /></small>
               </p>
               <p className="mb-1"><small><strong>Action:</strong> {event.payload.action_name}</small></p>
             </div>
@@ -134,7 +98,7 @@ const NodeEventDetailPane: React.FC<NodeEventDetailPaneProps> = ({ event, onNode
           <div className="row g-2 mt-1">
             <div className="col-md-6">
               <p className="mb-1">
-                <small><strong>Node ID:</strong> {renderClickableNodeId(event.payload.node_id, null, false)}</small>
+                <small><strong>Node ID:</strong> <RenderClickableNodeId nodeId={event.payload.node_id} onNodeClick={onNodeClick} truncate={false} /></small>
               </p>
               <p className="mb-1"><small><strong>Node Goal:</strong> {event.payload.node_goal}</small></p>
             </div>
@@ -164,7 +128,7 @@ const NodeEventDetailPane: React.FC<NodeEventDetailPaneProps> = ({ event, onNode
               {event.payload.action_name && <p className="mb-1"><small><strong>Action:</strong> {event.payload.action_name}</small></p>}
               {event.payload.node_id && (
                 <p className="mb-1">
-                  <small><strong>Node ID:</strong> {renderClickableNodeId(event.payload.node_id, null, false)}</small>
+                  <small><strong>Node ID:</strong> <RenderClickableNodeId nodeId={event.payload.node_id} onNodeClick={onNodeClick} truncate={false} /></small>
                 </p>
               )}
             </div>
@@ -187,7 +151,7 @@ const NodeEventDetailPane: React.FC<NodeEventDetailPaneProps> = ({ event, onNode
               <p className="mb-1"><small><strong>Tokens:</strong> {event.payload.token_usage?.prompt_tokens || 0} / {event.payload.token_usage?.completion_tokens || 0}</small></p>
               {event.payload.node_id && (
                 <p className="mb-1">
-                  <small><strong>Node ID:</strong> {renderClickableNodeId(event.payload.node_id, null, false)}</small>
+                  <small><strong>Node ID:</strong> <RenderClickableNodeId nodeId={event.payload.node_id} onNodeClick={onNodeClick} truncate={false} /></small>
                 </p>
               )}
             </div>
@@ -208,7 +172,7 @@ const NodeEventDetailPane: React.FC<NodeEventDetailPaneProps> = ({ event, onNode
             <div className="col-md-6">
               {event.payload.node_id && (
                 <p className="mb-1">
-                  <small><strong>Node ID:</strong> {renderClickableNodeId(event.payload.node_id, null, false)}</small>
+                  <small><strong>Node ID:</strong> <RenderClickableNodeId nodeId={event.payload.node_id} onNodeClick={onNodeClick} truncate={false} /></small>
                 </p>
               )}
             </div>
@@ -219,7 +183,6 @@ const NodeEventDetailPane: React.FC<NodeEventDetailPaneProps> = ({ event, onNode
               code={event.payload.args_summary}
               language="json"
               maxHeight="200px"
-              className="mt-1"
             />
           </div>
         </>
@@ -242,7 +205,7 @@ const NodeEventDetailPane: React.FC<NodeEventDetailPaneProps> = ({ event, onNode
               <p className="mb-1"><small><strong>Duration:</strong> {event.payload.duration_seconds.toFixed(2)}s</small></p>
               {event.payload.node_id && (
                 <p className="mb-1">
-                  <small><strong>Node ID:</strong> {renderClickableNodeId(event.payload.node_id, null, false)}</small>
+                  <small><strong>Node ID:</strong> <RenderClickableNodeId nodeId={event.payload.node_id} onNodeClick={onNodeClick} truncate={false} /></small>
                 </p>
               )}
             </div>
@@ -263,7 +226,7 @@ const NodeEventDetailPane: React.FC<NodeEventDetailPaneProps> = ({ event, onNode
           <div className="row g-2 mt-1">
             <div className="col-md-6">
               <p className="mb-1">
-                <small><strong>Node ID:</strong> {renderClickableNodeId(event.payload.node_id, null, false)}</small>
+                <small><strong>Node ID:</strong> <RenderClickableNodeId nodeId={event.payload.node_id} onNodeClick={onNodeClick} truncate={false} /></small>
               </p>
               <p className="mb-1"><small><strong>Node NID:</strong> {event.payload.node_nid}</small></p>
               <p className="mb-1"><small><strong>Node Type:</strong> {event.payload.node_type}</small></p>
@@ -273,11 +236,11 @@ const NodeEventDetailPane: React.FC<NodeEventDetailPaneProps> = ({ event, onNode
               <p className="mb-1"><small><strong>Layer:</strong> {event.payload.layer}</small></p>
               <p className="mb-1">
                 <small><strong>Outer Node ID:</strong> {event.payload.outer_node_id 
-                  ? renderClickableNodeId(event.payload.outer_node_id) 
+                  ? <RenderClickableNodeId nodeId={event.payload.outer_node_id} onNodeClick={onNodeClick} /> 
                   : 'N/A'}</small>
               </p>
               <p className="mb-1">
-                <small><strong>Root Node ID:</strong> {renderClickableNodeId(event.payload.root_node_id)}</small>
+                <small><strong>Root Node ID:</strong> <RenderClickableNodeId nodeId={event.payload.root_node_id} onNodeClick={onNodeClick} /></small>
               </p>
             </div>
           </div>
@@ -296,7 +259,7 @@ const NodeEventDetailPane: React.FC<NodeEventDetailPaneProps> = ({ event, onNode
           <div className="row g-2 mt-1">
             <div className="col-md-6">
               <p className="mb-1">
-                <small><strong>Node ID:</strong> {renderClickableNodeId(event.payload.node_id, null, false)}</small>
+                <small><strong>Node ID:</strong> <RenderClickableNodeId nodeId={event.payload.node_id} onNodeClick={onNodeClick} truncate={false} /></small>
               </p>
               <p className="mb-1"><small><strong>Task Type:</strong> {event.payload.task_type || 'N/A'}</small></p>
             </div>
@@ -316,14 +279,14 @@ const NodeEventDetailPane: React.FC<NodeEventDetailPaneProps> = ({ event, onNode
           <div className="row g-2 mt-1">
             <div className="col-md-6">
               <p className="mb-1">
-                <small><strong>Graph Owner Node:</strong> {renderClickableNodeId(event.payload.graph_owner_node_id)}</small>
+                <small><strong>Graph Owner Node:</strong> <RenderClickableNodeId nodeId={event.payload.graph_owner_node_id} onNodeClick={onNodeClick} /></small>
               </p>
               <p className="mb-1"><small><strong>Task Type:</strong> {event.payload.task_type || 'N/A'}</small></p>
               <p className="mb-1"><small><strong>Task Goal:</strong> {event.payload.task_goal || 'N/A'}</small></p>
             </div>
             <div className="col-md-6">
               <p className="mb-1">
-                <small><strong>Added Node ID:</strong> {renderClickableNodeId(event.payload.added_node_id)}</small>
+                <small><strong>Added Node ID:</strong> <RenderClickableNodeId nodeId={event.payload.added_node_id} onNodeClick={onNodeClick} /></small>
               </p>
               <p className="mb-1"><small><strong>Added Node NID:</strong> {event.payload.added_node_nid}</small></p>
               <p className="mb-1"><small><strong>Step:</strong> {event.payload.step || 'N/A'}</small></p>
@@ -340,7 +303,7 @@ const NodeEventDetailPane: React.FC<NodeEventDetailPaneProps> = ({ event, onNode
           <div className="row g-2 mt-1">
             <div className="col-md-6">
               <p className="mb-1">
-                <small><strong>Graph Owner Node:</strong> {renderClickableNodeId(event.payload.graph_owner_node_id)}</small>
+                <small><strong>Graph Owner Node:</strong> <RenderClickableNodeId nodeId={event.payload.graph_owner_node_id} onNodeClick={onNodeClick} /></small>
               </p>
               <p className="mb-1"><small><strong>Task Type:</strong> {event.payload.task_type || 'N/A'}</small></p>
               <p className="mb-1"><small><strong>Task Goal:</strong> {event.payload.task_goal || 'N/A'}</small></p>
@@ -355,14 +318,14 @@ const NodeEventDetailPane: React.FC<NodeEventDetailPaneProps> = ({ event, onNode
               <div className="node-box border rounded p-1 bg-white">
                 <p className="mb-0"><small><strong>Parent:</strong> {event.payload.parent_node_nid}</small></p>
                 <p className="mb-0 small text-muted">
-                  {renderClickableNodeId(event.payload.parent_node_id)}
+                  <RenderClickableNodeId nodeId={event.payload.parent_node_id} onNodeClick={onNodeClick} />
                 </p>
               </div>
               <ArrowRight size={20} className="mx-2 text-primary" />
               <div className="node-box border rounded p-1 bg-white">
                 <p className="mb-0"><small><strong>Child:</strong> {event.payload.child_node_nid}</small></p>
                 <p className="mb-0 small text-muted">
-                  {renderClickableNodeId(event.payload.child_node_id)}
+                  <RenderClickableNodeId nodeId={event.payload.child_node_id} onNodeClick={onNodeClick} />
                 </p>
               </div>
             </div>
@@ -378,7 +341,7 @@ const NodeEventDetailPane: React.FC<NodeEventDetailPaneProps> = ({ event, onNode
           <div className="row g-2 mt-1">
             <div className="col-md-6">
               <p className="mb-1">
-                <small><strong>Owner Node ID:</strong> {renderClickableNodeId(event.payload.node_id)}</small>
+                <small><strong>Owner Node ID:</strong> <RenderClickableNodeId nodeId={event.payload.node_id} onNodeClick={onNodeClick} /></small>
               </p>
               <p className="mb-1"><small><strong>Task Type:</strong> {event.payload.task_type || 'N/A'}</small></p>
               <p className="mb-1"><small><strong>Task Goal:</strong> {event.payload.task_goal || 'N/A'}</small></p>
@@ -394,7 +357,7 @@ const NodeEventDetailPane: React.FC<NodeEventDetailPaneProps> = ({ event, onNode
             <div className="mt-1">
               {event.payload.node_ids?.map((nodeId: string, index: number) => (
                 <Badge key={index} bg="light" text="dark" className="me-1 mb-1 p-1">
-                  {renderClickableNodeId(nodeId, null, true)}
+                  <RenderClickableNodeId nodeId={nodeId} onNodeClick={onNodeClick} truncate={true} />
                 </Badge>
               ))}
             </div>
@@ -410,7 +373,7 @@ const NodeEventDetailPane: React.FC<NodeEventDetailPaneProps> = ({ event, onNode
           <div className="row g-2 mt-1">
             <div className="col-md-6">
               <p className="mb-1">
-                <small><strong>Node ID:</strong> {renderClickableNodeId(event.payload.node_id)}</small>
+                <small><strong>Node ID:</strong> <RenderClickableNodeId nodeId={event.payload.node_id} onNodeClick={onNodeClick} /></small>
               </p>
               <p className="mb-1"><small><strong>Action Name:</strong> {event.payload.action_name}</small></p>
             </div>
@@ -431,7 +394,6 @@ const NodeEventDetailPane: React.FC<NodeEventDetailPaneProps> = ({ event, onNode
           code={JSON.stringify(event.payload, null, 2)}
           language="json"
           maxHeight="200px"
-          className="mt-1"
         />
       </div>
     );
