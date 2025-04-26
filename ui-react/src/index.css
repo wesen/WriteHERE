@@ -66,3 +66,70 @@ button:focus-visible {
     background-color: #f9f9f9;
   }
 }
+
+/* Dashboard styles */
+.dashboard-container {
+  width: 1024px;
+  padding: 15px 0;
+}
+
+.dashboard-container .card {
+  height: 100%;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  transition: transform 0.2s;
+}
+
+.dashboard-container .card:hover {
+  transform: translateY(-3px);
+}
+
+.dashboard-container .card-header {
+  background-color: #f8f9fa;
+  font-weight: 600;
+}
+
+.dashboard-container .list-group-item {
+  border-left: none;
+  border-right: none;
+  padding: 12px 15px;
+}
+
+.dashboard-container .list-group-item:last-child {
+  border-bottom: none;
+}
+
+.dashboard-container .spinner-border {
+  width: 0.8rem;
+  height: 0.8rem;
+  border-width: 0.1em;
+}
+
+/* Colorize by activity type */
+.dashboard-container .active-step {
+  border-left: 4px solid #0d6efd;
+}
+
+.dashboard-container .active-llm {
+  border-left: 4px solid #0dcaf0;
+}
+
+.dashboard-container .active-tool {
+  border-left: 4px solid #ffc107;
+}
+
+/* Run summary card */
+.dashboard-container .card h2 {
+  font-size: 2rem;
+  font-weight: 600;
+  color: #0d6efd;
+}
+
+.dashboard-container .text-muted {
+  font-size: 0.9rem;
+}
+
+/* Progress info */
+.dashboard-container .progress {
+  height: 6px;
+  margin-top: 5px;
+}

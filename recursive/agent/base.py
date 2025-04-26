@@ -11,6 +11,7 @@ import time  # For timing
 import yaml
 from typing import Any, Optional  # Added Optional
 import hashlib  # For hashing prompt (optional)
+import uuid  # Import uuid
 
 from recursive.node.abstract import AbstractNode
 from recursive.memory import Memory
@@ -46,6 +47,7 @@ class Agent(ABC):
         **other_inner_args,
     ):
         llm = OpenAIApiProxy()
+        call_id = str(uuid.uuid4())  # Generate unique ID for this specific LLM call
 
         if system_message.strip() == "":
             message = []
@@ -88,6 +90,7 @@ class Agent(ABC):
         # Use a truncated prompt or a hash for the event payload
         # prompt_hash = hashlib.sha256(prompt.encode()).hexdigest()[:16]
         emit_llm_call_started(
+            call_id=call_id,  # Pass the unique call ID
             agent_class=agent_name,  # Keep explicit agent_class for direct access if needed
             model=model,
             prompt_messages=message,  # Pass full message list
@@ -136,6 +139,7 @@ class Agent(ABC):
 
         # --- Emit LLMCallCompleted ---
         emit_llm_call_completed(
+            call_id=call_id,  # Pass the unique call ID
             agent_class=agent_name,  # Keep explicit agent_class for direct access if needed
             model=model,
             duration=llm_call_duration,

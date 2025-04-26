@@ -99,6 +99,10 @@ class DatabaseManager:
         CREATE INDEX IF NOT EXISTS idx_edges_parent ON edges(parent_node_id);
         CREATE INDEX IF NOT EXISTS idx_edges_child ON edges(child_node_id);
         CREATE INDEX IF NOT EXISTS idx_edges_nids ON edges(parent_nid, child_nid);
+
+        -- Indices for payload fields used for pairing/linking
+        CREATE INDEX IF NOT EXISTS idx_events_payload_call_id ON events(json_extract(payload, '$.call_id'));
+        CREATE INDEX IF NOT EXISTS idx_events_payload_tool_call_id ON events(json_extract(payload, '$.tool_call_id'));
         """
 
         create_views_sql = """

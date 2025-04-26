@@ -4,15 +4,17 @@ import { AgentEvent } from '../features/events/eventsApi';
 import { isEventType } from '../helpers/eventType';
 import { statusColorMap } from '../helpers/eventConstants';
 import { RenderClickableNodeId } from '../helpers/formatters'; // Import the component
+import CodeHighlighter from './CodeHighlighter';
 
 interface EventPayloadDetailsProps {
   event: AgentEvent;
   onNodeClick?: (nodeId: string) => void; // Propagate the handler
   className?: string; // Allow passing custom classes
+  showCallIds?: boolean; // Optionally show call/tool IDs
 }
 
 // Extracted from EventTable.tsx
-const EventPayloadDetails: React.FC<EventPayloadDetailsProps> = ({ event, onNodeClick, className = '' }) => {
+const EventPayloadDetails: React.FC<EventPayloadDetailsProps> = ({ event, onNodeClick, className = '', showCallIds = false }) => {
     if (isEventType("step_started")(event)) {
         return <span className={`text-muted text-truncate d-inline-block ${className}`} style={{ maxWidth: '500px' }}>{event.payload.node_goal}</span>;
     }
@@ -42,47 +44,52 @@ const EventPayloadDetails: React.FC<EventPayloadDetailsProps> = ({ event, onNode
 
     if (isEventType("llm_call_started")(event)) {
         return (
-            <div className={`text-truncate ${className}`} style={{ maxWidth: '500px' }}>
-                Agent: <span className="fw-medium">{event.payload.agent_class}</span>,
-                Model: <span className="fw-medium">{event.payload.model}</span>
-            </div>
+            <small className={className}>
+                <strong>Agent:</strong> {event.payload.agent_class},{' '}
+                <strong>Model:</strong> {event.payload.model}
+                {showCallIds && event.payload.call_id && (
+                    <span>, <strong>Call ID:</strong> {event.payload.call_id.substring(0, 8)}...</span>
+                )}
+            </small>
         );
     }
 
     if (isEventType("llm_call_completed")(event)) {
         return (
-            <div className={`text-truncate ${className}`} style={{ maxWidth: '500px' }}>
-                Model: <span className="fw-medium">{event.payload.model}</span>,
-                Agent: <span className="fw-medium">{event.payload.agent_class}</span>,
-                Duration: <span className="fw-medium">{event.payload.duration_seconds?.toFixed(2)}s</span>
+            <small className={className}>
+                <strong>Agent:</strong> {event.payload.agent_class},{' '}
+                <strong>Duration:</strong> {event.payload.duration_seconds.toFixed(2)}s
                 {event.payload.token_usage && (
-                    <span className="ms-2 small text-muted">
-                        (Tokens: {event.payload.token_usage.prompt_tokens}p + {event.payload.token_usage.completion_tokens}c)
-                    </span>
+                    <span>, <strong>Tokens:</strong> {event.payload.token_usage.prompt_tokens}p + {event.payload.token_usage.completion_tokens}c</span>
                 )}
-                {event.payload.error && <div className="text-danger small mt-1">Error: {event.payload.error}</div>}
-            </div>
+                {showCallIds && event.payload.call_id && (
+                    <span>, <strong>Call ID:</strong> {event.payload.call_id.substring(0, 8)}...</span>
+                )}
+            </small>
         );
     }
 
     if (isEventType("tool_invoked")(event)) {
         return (
-            <div className={`text-truncate ${className}`} style={{ maxWidth: '500px' }}>
-                Tool: <span className="fw-medium">{event.payload.tool_name}</span>,
-                API: <span className="fw-medium">{event.payload.api_name}</span>
-            </div>
+            <small className={className}>
+                <strong>Tool:</strong> {event.payload.tool_name}.{event.payload.api_name}
+                {showCallIds && event.payload.tool_call_id && (
+                    <span>, <strong>Call ID:</strong> {event.payload.tool_call_id.substring(0, 8)}...</span>
+                )}
+            </small>
         );
     }
 
     if (isEventType("tool_returned")(event)) {
         return (
-            <div className={`text-truncate ${className}`} style={{ maxWidth: '500px' }}>
-                Tool: <span className="fw-medium">{event.payload.tool_name}</span>,
-                API: <span className="fw-medium">{event.payload.api_name}</span>,
-                State: <span className={`fw-medium ${event.payload.state === 'SUCCESS' ? 'text-success' : 'text-danger'}`}>{event.payload.state}</span>,
-                Duration: <span className="fw-medium">{event.payload.duration_seconds?.toFixed(2)}s</span>
-                {event.payload.error && <div className="text-danger small mt-1">Error: {event.payload.error}</div>}
-            </div>
+            <small className={className}>
+                <strong>Tool:</strong> {event.payload.tool_name}.{event.payload.api_name},{' '}
+                <strong>State:</strong> {event.payload.state},{' '}
+                <strong>Duration:</strong> {event.payload.duration_seconds.toFixed(2)}s
+                {showCallIds && event.payload.tool_call_id && (
+                    <span>, <strong>Call ID:</strong> {event.payload.tool_call_id.substring(0, 8)}...</span>
+                )}
+            </small>
         );
     }
 

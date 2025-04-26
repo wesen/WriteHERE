@@ -841,6 +841,18 @@ const EventDetailModal: React.FC<EventDetailModalProps> = ({
                           <td><RenderClickableNodeId nodeId={(event.payload as { node_id: string }).node_id} onNodeClick={onNodeClick} truncate={false} /></td>
                         </tr>
                       )}
+                      {(isEventType("llm_call_started")(event) || isEventType("llm_call_completed")(event)) && event.payload.call_id && (
+                        <tr>
+                          <th>LLM Call ID</th>
+                          <td>{event.payload.call_id}</td>
+                        </tr>
+                      )}
+                      {(isEventType("tool_invoked")(event) || isEventType("tool_returned")(event)) && event.payload.tool_call_id && (
+                        <tr>
+                          <th>Tool Call ID</th>
+                          <td>{event.payload.tool_call_id}</td>
+                        </tr>
+                      )}
                       {isEventType('step_started')(event) && (
                         <tr>
                           <th>Root Node ID</th>

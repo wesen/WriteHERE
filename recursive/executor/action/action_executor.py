@@ -2,6 +2,7 @@ from typing import Dict, List, Union, Optional
 import time  # For timing
 import json  # For args summary
 from loguru import logger  # Added logger
+import uuid  # Import uuid
 
 from recursive.common.context import ExecutionContext
 from recursive.executor.schema import (
@@ -89,6 +90,9 @@ class ActionExecutor:
         self, name: str, command: str, ctx: Optional[ExecutionContext] = None
     ) -> ActionReturn:
         action_name, api_name = name.split(".") if "." in name else (name, "run")
+        tool_call_id = str(
+            uuid.uuid4()
+        )  # Generate unique ID for this specific tool call
         tool_start_time = time.monotonic()
         action_return = None
         error_msg = None
@@ -109,6 +113,7 @@ class ActionExecutor:
                 args_summary = str(command)
 
             emit_tool_invoked(
+                tool_call_id=tool_call_id,  # Pass the unique call ID
                 tool_name=action_name,
                 api_name=api_name,
                 args_summary=args_summary,
@@ -156,6 +161,7 @@ class ActionExecutor:
             state_name = ActionStatusCode.API_ERROR.name
 
         emit_tool_returned(
+            tool_call_id=tool_call_id,  # Pass the unique call ID
             tool_name=action_name,
             api_name=api_name,
             state=state_name,

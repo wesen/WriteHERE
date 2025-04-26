@@ -9,6 +9,7 @@ import { useDispatch } from 'react-redux';
 import { initializeGraphState } from './features/graph/graphSlice';
 import { AppDispatch } from './store';
 import ModalManager from './components/ModalManager';
+import Dashboard from './components/Dashboard';
 
 export default function App() {
   const dispatch = useDispatch<AppDispatch>();
@@ -21,7 +22,10 @@ export default function App() {
   return (
     <Container fluid className="pt-4">
       <h1 className="text-center mb-4">Recursive Agent — Live Monitor</h1>
-      <Tabs defaultActiveKey="events" id="main-tabs" className="mb-3">
+      <Tabs defaultActiveKey="dashboard" id="main-tabs" className="mb-3">
+        <Tab eventKey="dashboard" title="Dashboard">
+          <Dashboard />
+        </Tab>
         <Tab eventKey="events" title="Events">
           <EventTable />
         </Tab>

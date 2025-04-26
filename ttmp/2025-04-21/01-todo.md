@@ -47,11 +47,12 @@
 - [x] Add run_id to the run started event
 - [x] Add run_id to the events themselves
 
-- [ ] Some nodes don't seem to have parents
-- [ ] What about N/A status of new nodes?
+- [x] Some nodes don't seem to have parents
+- [x] What about N/A status of new nodes?
 - [x] Add run_id to the run started event
 - [x] First node never has a node_added event
-- [ ] edge_added is missing the step number
+- [x] edge_added is missing the step number
+- [x] tool_returned is missing the step number
 
 ## TODO menial
 

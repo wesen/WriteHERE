@@ -44,6 +44,7 @@ export interface LlmCallStartedPayload {
   step?: number | null; // Added optional step
   node_id?: string | null;
   action_name?: string | null; // Added optional action_name
+  call_id: string; // Added for pairing
 }
 
 export interface TokenUsage {
@@ -65,6 +66,7 @@ export interface LlmCallCompletedPayload {
   node_id?: string | null; // Optional
   token_usage?: TokenUsage | null; // Optional
   action_name?: string | null; // Added optional action_name
+  call_id: string; // Added for pairing
 }
 
 export interface ToolInvokedPayload {
@@ -72,6 +74,9 @@ export interface ToolInvokedPayload {
   api_name: string;
   args_summary: string;
   node_id?: string | null; // Optional
+  step?: number; // Added from context
+  agent_class?: string; // Added from context
+  tool_call_id: string; // Added for pairing
 }
 
 export interface ToolReturnedPayload {
@@ -82,6 +87,9 @@ export interface ToolReturnedPayload {
   result_summary: string;
   error?: string | null; // Optional
   node_id?: string | null; // Optional
+  step?: number; // Added from context
+  agent_class?: string; // Added from context
+  tool_call_id: string; // Added for pairing
 }
 
 // New Node/Graph Event Payloads
@@ -394,22 +402,16 @@ export const eventsApi = createApi({
             msg = JSON.parse(event.data);
             console.log("[eventsApi] Received event:", msg);
 
-            /* 1️⃣  keep the audit log */
-            updateCachedData((draft) => {
-              // Prepend the new event to maintain chronological order (newest first)
-              draft.events.unshift(msg);
-              // Optional: Limit the number of stored events
-              const maxEvents = 200;
-              if (draft.events.length > maxEvents) {
-                draft.events.length = maxEvents; // Keep only the latest N events
-              }
-            });
-
             /* 2️⃣  mirror graph‑relevant events */
             switch (msg.event_type) {
               case "run_started": {
+                // Clear graph state AND the cached event list for the new run
                 dispatch(graphClearGraph());
-                break;
+                updateCachedData((draft) => {
+                  draft.events = [msg]; // Start fresh with only the run_started event
+                });
+                // Skip the default unshift below for run_started
+                return;
               }
               case "node_created": {
                 // Ensure payload is correctly typed
@@ -484,6 +486,17 @@ export const eventsApi = createApi({
               e
             );
           }
+
+          // Default update for non-run_started events
+          updateCachedData((draft) => {
+            // Prepend the new event to maintain chronological order (newest first)
+            draft.events.unshift(msg);
+            // Optional: Limit the number of stored events
+            const maxEvents = 200;
+            if (draft.events.length > maxEvents) {
+              draft.events.length = maxEvents; // Keep only the latest N events
+            }
+          });
         };
 
         ws.onerror = (error) => {

@@ -145,6 +145,8 @@ def _create_event(
             "node_next_status",
             "task_goal",
             "agent_class",
+            # Note: call_id and tool_call_id are added explicitly in their emitters
+            # and should not be overwritten by context.
         ]
         for field_name in context_fields:
             field_value = getattr(ctx, field_name, None)
@@ -218,6 +220,7 @@ def emit_node_status_changed(
 
 
 def emit_llm_call_started(
+    call_id: str,
     agent_class: str,
     model: str,
     prompt_messages: List[Dict[str, str]],
@@ -226,6 +229,7 @@ def emit_llm_call_started(
     # node_id is now primarily expected via ctx
 ):
     payload: Dict[str, Any] = {
+        "call_id": call_id,
         "agent_class": agent_class,
         "model": model,
         "prompt": prompt_messages,
@@ -236,6 +240,7 @@ def emit_llm_call_started(
 
 
 def emit_llm_call_completed(
+    call_id: str,
     agent_class: str,
     model: str,
     duration: float,
@@ -246,6 +251,7 @@ def emit_llm_call_completed(
     token_usage: Optional[dict] = None,
 ):
     payload: Dict[str, Any] = {
+        "call_id": call_id,
         "agent_class": agent_class,
         "model": model,
         "duration_seconds": duration,
@@ -262,6 +268,7 @@ def emit_llm_call_completed(
 
 
 def emit_tool_invoked(
+    tool_call_id: str,
     tool_name: str,
     api_name: str,
     args_summary: str,
@@ -269,6 +276,7 @@ def emit_tool_invoked(
     # node_id is now primarily expected via ctx
 ):
     payload: Dict[str, Any] = {
+        "tool_call_id": tool_call_id,
         "tool_name": tool_name,
         "api_name": api_name,
         "args_summary": args_summary[:500] + "...",
@@ -278,6 +286,7 @@ def emit_tool_invoked(
 
 
 def emit_tool_returned(
+    tool_call_id: str,
     tool_name: str,
     api_name: str,
     state: str,
@@ -288,6 +297,7 @@ def emit_tool_returned(
     # node_id is now primarily expected via ctx
 ):
     payload: Dict[str, Any] = {
+        "tool_call_id": tool_call_id,
         "tool_name": tool_name,
         "api_name": api_name,
         "state": state,

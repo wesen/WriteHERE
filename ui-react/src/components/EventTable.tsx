@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useGetEventsQuery, ConnectionStatus, AgentEvent } from '../features/events/eventsApi';
-import { Table, Spinner, Alert } from 'react-bootstrap';
+import { Table, Spinner, Alert, Form } from 'react-bootstrap';
 import { isEventType } from '../helpers/eventType'; // Import the type guard
 import './styles.css'; // We'll add a separate styles file
 import { useAppDispatch } from '../store';
@@ -21,7 +21,10 @@ const getEventStep = (event: AgentEvent): number | string => {
         isEventType('node_added')(event) ||
         isEventType('edge_added')(event) ||
         isEventType('inner_graph_built')(event) ||
+        isEventType('tool_invoked')(event) ||
+        isEventType('tool_returned')(event) ||
         isEventType('node_result_available')(event)) {
+
         return event.payload.step ?? 'N/A';
     }
     return 'N/A';
@@ -67,7 +70,11 @@ const EventTable: React.FC = () => {
     const dispatch = useAppDispatch();
     const events = data?.events ?? [];
     const status = data?.status ?? ConnectionStatus.Connecting;
-
+    
+    // Add state for auto-scroll toggle
+    const [autoScroll, setAutoScroll] = useState(false);
+    const tableEndRef = useRef<HTMLDivElement>(null);
+    
     // Handle opening the modal with a specific event
     const handleEventClick = (event: AgentEvent) => {
         dispatch(pushModal({ type: 'event', params: { eventId: event.event_id } }));
@@ -76,6 +83,13 @@ const EventTable: React.FC = () => {
     const handleNodeClick = (nodeId: string) => {
         dispatch(pushModal({ type: 'node', params: { nodeId } }));
     };
+    
+    // Auto-scroll effect
+    useEffect(() => {
+        if (autoScroll && tableEndRef.current) {
+            tableEndRef.current.scrollIntoView({ behavior: 'smooth' });
+        }
+    }, [events, autoScroll]);
 
     if (isLoading && !data) {
         return <Spinner animation="border" role="status" className="d-block mx-auto mt-5"><span className="visually-hidden">Loading...</span></Spinner>;
@@ -86,67 +100,82 @@ const EventTable: React.FC = () => {
         return <Alert variant="danger">Error loading events: {errorMessage}. Check console.</Alert>;
     }
 
-    const reversedEvents = [...events].reverse();
+    // Get events in the correct order based on auto-scroll setting
+    const displayEvents = autoScroll ? [...events] : [...events].reverse();
 
     return (
         <>
-            <Table hover responsive size="sm" className="mt-0 mb-0 table-fixed">
-                <colgroup>
-                    <col style={{ width: '10%' }} />
-                    <col style={{ width: '12%' }} />
-                    <col style={{ width: '10%' }} />
-                    <col style={{ width: '5%' }} />
-                    <col style={{ width: '10%' }} />
-                    <col style={{ width: '53%' }} />
-                </colgroup>
-                <thead className="table-light border-bottom" style={{ position: 'sticky', top: 0, zIndex: 1 }}>
-                    <tr>
-                        <th className="px-3 py-2 text-muted fw-medium text-uppercase small">Timestamp</th>
-                        <th className="px-3 py-2 text-muted fw-medium text-uppercase small">Type</th>
-                        <th className="px-3 py-2 text-muted fw-medium text-uppercase small text-nowrap">Run ID</th>
-                        <th className="px-3 py-2 text-muted fw-medium text-uppercase small text-nowrap">Step #</th>
-                        <th className="px-3 py-2 text-muted fw-medium text-uppercase small text-nowrap">Node ID</th>
-                        <th className="px-3 py-2 text-muted fw-medium text-uppercase small text-start">Payload / Details</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {reversedEvents.length === 0 && status === ConnectionStatus.Connected && (
+            <div className="d-flex justify-content-end mb-2">
+                <Form>
+                    <Form.Check 
+                        type="switch"
+                        id="auto-scroll-switch"
+                        label="Auto-scroll to new events"
+                        checked={autoScroll}
+                        onChange={(e) => setAutoScroll(e.target.checked)}
+                    />
+                </Form>
+            </div>
+            <div style={{ maxHeight: '70vh', overflowY: 'auto' }}>
+                <Table hover responsive size="sm" className="mt-0 mb-0 table-fixed">
+                    <colgroup>
+                        <col style={{ width: '10%' }} />
+                        <col style={{ width: '12%' }} />
+                        <col style={{ width: '10%' }} />
+                        <col style={{ width: '5%' }} />
+                        <col style={{ width: '10%' }} />
+                        <col style={{ width: '53%' }} />
+                    </colgroup>
+                    <thead className="table-light border-bottom" style={{ position: 'sticky', top: 0, zIndex: 1 }}>
                         <tr>
-                            <td colSpan={6} className="text-center text-muted p-4">Waiting for events...</td>
+                            <th className="px-3 py-2 text-muted fw-medium text-uppercase small">Timestamp</th>
+                            <th className="px-3 py-2 text-muted fw-medium text-uppercase small">Type</th>
+                            <th className="px-3 py-2 text-muted fw-medium text-uppercase small text-nowrap">Run ID</th>
+                            <th className="px-3 py-2 text-muted fw-medium text-uppercase small text-nowrap">Step #</th>
+                            <th className="px-3 py-2 text-muted fw-medium text-uppercase small text-nowrap">Node ID</th>
+                            <th className="px-3 py-2 text-muted fw-medium text-uppercase small text-start">Payload / Details</th>
                         </tr>
-                    )}
-                    {reversedEvents.map((event) => {
-                        const nodeIdInfo = getEventNodeIdInfo(event);
-                        
-                        return (
-                            <tr 
-                                key={event.event_id} 
-                                style={{ verticalAlign: 'middle', cursor: 'pointer' }}
-                                onClick={() => handleEventClick(event)}
-                                className="event-row"
-                            >
-                                <td className="px-3 py-2 text-muted small text-nowrap">{formatTimestamp(event.timestamp)}</td>
-                                <td className="px-3 py-2">
-                                    <EventTypeBadge eventType={event.event_type} />
-                                </td>
-                                <td className="px-3 py-2 text-muted small font-monospace text-nowrap">{event.run_id?.substring(0, 8) || 'N/A'}</td>
-                                <td className="px-3 py-2 text-muted small text-center">{getEventStep(event)}</td>
-                                <td className="px-3 py-2 text-muted small font-monospace text-nowrap">
-                                    <RenderClickableNodeId 
-                                        nodeId={nodeIdInfo.id} 
-                                        label={nodeIdInfo.text} 
-                                        truncate={false}
-                                        onNodeClick={handleNodeClick} 
-                                    />
-                                </td>
-                                <td className="px-3 py-2 text-muted small text-start">
-                                    <EventPayloadDetails event={event} onNodeClick={handleNodeClick} />
-                                </td>
+                    </thead>
+                    <tbody>
+                        {displayEvents.length === 0 && status === ConnectionStatus.Connected && (
+                            <tr>
+                                <td colSpan={6} className="text-center text-muted p-4">Waiting for events...</td>
                             </tr>
-                        );
-                    })}
-                </tbody>
-            </Table>
+                        )}
+                        {displayEvents.map((event) => {
+                            const nodeIdInfo = getEventNodeIdInfo(event);
+                            
+                            return (
+                                <tr 
+                                    key={event.event_id} 
+                                    style={{ verticalAlign: 'middle', cursor: 'pointer' }}
+                                    onClick={() => handleEventClick(event)}
+                                    className="event-row"
+                                >
+                                    <td className="px-3 py-2 text-muted small text-nowrap">{formatTimestamp(event.timestamp)}</td>
+                                    <td className="px-3 py-2">
+                                        <EventTypeBadge eventType={event.event_type} />
+                                    </td>
+                                    <td className="px-3 py-2 text-muted small font-monospace text-nowrap">{event.run_id?.substring(0, 8) || 'N/A'}</td>
+                                    <td className="px-3 py-2 text-muted small text-center">{getEventStep(event)}</td>
+                                    <td className="px-3 py-2 text-muted small font-monospace text-nowrap">
+                                        <RenderClickableNodeId 
+                                            nodeId={nodeIdInfo.id} 
+                                            label={nodeIdInfo.text} 
+                                            truncate={false}
+                                            onNodeClick={handleNodeClick} 
+                                        />
+                                    </td>
+                                    <td className="px-3 py-2 text-muted small text-start">
+                                        <EventPayloadDetails event={event} onNodeClick={handleNodeClick} showCallIds={true} />
+                                    </td>
+                                </tr>
+                            );
+                        })}
+                    </tbody>
+                </Table>
+                <div ref={tableEndRef} />
+            </div>
         </>
     );
 };
