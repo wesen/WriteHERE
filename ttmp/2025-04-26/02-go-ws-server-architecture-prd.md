@@ -51,7 +51,7 @@ graph TD
     - Broadcasting events received from the Watermill handler to connected clients.
     - Handling client-specific logic (like sending historical data upon connection).
 - **Watermill Message Router (`internal/redis/router.go`):** Manages the event flow:
-    - Configures the Redis Stream PubSub subscriber, utilizing a custom unmarshaller to handle the specific JSON payload format sent by the Python publisher.
+    - Configures the Redis Stream PubSub subscriber, utilizing a custom unmarshaller (`internal/redis/unmarshaller.go`) to handle the specific JSON payload format sent by the Python publisher.
     - Registers independent handlers for different components (DB persist, state update, WS broadcast).
     - Provides message delivery guarantees (e.g., at-least-once) with acknowledgement/retry capabilities.
     - Handles graceful shutdown of message processing.
@@ -75,7 +75,7 @@ graph TD
 2.  **Event Bus (Python):** The Python `EventBus` publishes the **entire event object serialized as a JSON string** under the key **`json_payload`** within the Redis stream message.
 3.  **Watermill Router (Go):** 
     - The Redis Stream PubSub subscribes to the stream and receives new messages.
-    - **A custom Watermill unmarshaller** reads the `json_payload` field from the Redis message, extracts the JSON string, and constructs a Watermill message with this string as its payload.
+    - **The implemented `CustomEventUnmarshaller`** reads the `json_payload` field from the Redis message, extracts the JSON string, and constructs a Watermill message with this string as its payload.
     - The message router delivers the message to all registered handlers in parallel.
 4.  **Handler Execution:**
     - **Database Handler:** Decodes the JSON payload (which represents the full event), persists the event to SQLite, and acknowledges the message.
@@ -106,141 +106,13 @@ The Go server will implement the exact same API endpoints as the Python server:
 - The `DatabaseManager` will encapsulate all SQLite operations.
 - It will use the `database/sql` package and `mattn/go-sqlite3` (or similar CGO-enabled driver).
 - Connection management: A single connection pool managed by the `DatabaseManager`.
-- Schema Initialization: On startup, `_ensure_db` logic will be replicated to create tables and indexes if they don't exist.
+- Schema Initialization: On startup, `_ensure_db` logic will be replicated to create tables and indexes if they don't exist. The schema is defined in `internal/db/schema.sql` and embedded into the binary using `//go:embed`.
 - Event Storage: The `StoreEvent` logic will be used in the Watermill handler function, handling the conditional logic based on `event_type` to update related tables.
 - Data Retrieval: Methods like `GetLatestRunEvents` and `GetLatestRunGraph` will be implemented to fetch data for state reloading.
 - Transactions: Use transactions where appropriate, especially when multiple tables are updated.
 - Error Handling: Database errors will trigger message NACK in the Watermill handler, allowing built-in retry mechanisms to handle temporary failures.
 
-### Database Schema (Mirroring Python `db_manager.py`)
-
-The Go implementation will ensure the following schema is present in the SQLite database:
-
-```sql
--- Base events table storing common fields
-CREATE TABLE IF NOT EXISTS events (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    event_id TEXT NOT NULL,          -- UUID from original event
-    run_id TEXT NOT NULL,            -- Groups events by agent run
-    event_type TEXT NOT NULL,        -- One of the 14 event types
-    timestamp TEXT NOT NULL,         -- ISO format timestamp
-    payload JSON NOT NULL,           -- Full event payload as JSON
-    node_id TEXT,                    -- Optional link to related node
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- Table to track runs for easier session management
-CREATE TABLE IF NOT EXISTS runs (
-    run_id TEXT PRIMARY KEY,
-    start_time TEXT NOT NULL,        -- From run_started event
-    end_time TEXT,                   -- From run_finished event
-    status TEXT NOT NULL,            -- 'running', 'completed', 'error'
-    total_steps INTEGER,
-    total_nodes INTEGER,
-    error_message TEXT,              -- If status is 'error'
-    root_node_id TEXT,               -- Link to root node of the run
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- Table to store nodes
-CREATE TABLE IF NOT EXISTS nodes (
-    node_id TEXT PRIMARY KEY,        -- UUID of the node
-    run_id TEXT NOT NULL,            -- Link to parent run
-    node_nid TEXT NOT NULL,          -- Hierarchical ID (e.g., "1.2.3")
-    node_type TEXT NOT NULL,         -- PLAN_NODE, EXECUTE_NODE, etc.
-    task_type TEXT NOT NULL,         -- COMPOSITION, REASONING, etc.
-    task_goal TEXT NOT NULL,         -- Node's goal/purpose
-    status TEXT NOT NULL,            -- Current node status
-    layer INTEGER NOT NULL,          -- Node's depth in the tree
-    outer_node_id TEXT,              -- Parent node in hierarchy (if any)
-    root_node_id TEXT NOT NULL,      -- Top-level node of this branch
-    result JSON,                     -- Node's final output (if any)
-    metadata JSON,                   -- Additional node properties
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (run_id) REFERENCES runs(run_id),
-    FOREIGN KEY (outer_node_id) REFERENCES nodes(node_id)
-);
-
--- Table to store node relationships (edges)
-CREATE TABLE IF NOT EXISTS edges (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    run_id TEXT NOT NULL,            -- Link to parent run
-    parent_node_id TEXT NOT NULL,    -- Source node
-    child_node_id TEXT NOT NULL,     -- Target node
-    parent_nid TEXT NOT NULL,        -- Parent's hierarchical ID
-    child_nid TEXT NOT NULL,         -- Child's hierarchical ID
-    metadata JSON,                   -- Edge properties (if any)
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (run_id) REFERENCES runs(run_id),
-    FOREIGN KEY (parent_node_id) REFERENCES nodes(node_id),
-    FOREIGN KEY (child_node_id) REFERENCES nodes(node_id)
-);
-
--- Table to store raw planning data associated with a node
-CREATE TABLE IF NOT EXISTS graph_plans (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    run_id TEXT NOT NULL,
-    node_id TEXT NOT NULL,              -- Node that received the plan
-    raw_plan JSON NOT NULL,             -- The raw plan data
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (run_id) REFERENCES runs(run_id),
-    FOREIGN KEY (node_id) REFERENCES nodes(node_id)
-);
-
--- Index for efficient querying
-CREATE INDEX IF NOT EXISTS idx_events_run_id ON events(run_id);
-CREATE INDEX IF NOT EXISTS idx_events_type ON events(event_type);
-CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events(timestamp);
-CREATE INDEX IF NOT EXISTS idx_events_node_id ON events(node_id);
--- Indices for payload fields used for pairing/linking
-CREATE INDEX IF NOT EXISTS idx_events_payload_call_id ON events(json_extract(payload, '$.call_id'));
-CREATE INDEX IF NOT EXISTS idx_events_payload_tool_call_id ON events(json_extract(payload, '$.tool_call_id'));
-
-CREATE INDEX IF NOT EXISTS idx_runs_status ON runs(status);
-CREATE INDEX IF NOT EXISTS idx_runs_start_time ON runs(start_time);
-
-CREATE INDEX IF NOT EXISTS idx_nodes_run_id ON nodes(run_id);
-CREATE INDEX IF NOT EXISTS idx_nodes_nid ON nodes(node_nid);
-CREATE INDEX IF NOT EXISTS idx_nodes_outer ON nodes(outer_node_id);
-CREATE INDEX IF NOT EXISTS idx_nodes_root ON nodes(root_node_id);
-CREATE INDEX IF NOT EXISTS idx_nodes_status ON nodes(status);
-
-CREATE INDEX IF NOT EXISTS idx_edges_run ON edges(run_id);
-CREATE INDEX IF NOT EXISTS idx_edges_parent ON edges(parent_node_id);
-CREATE INDEX IF NOT EXISTS idx_edges_child ON edges(child_node_id);
-CREATE INDEX IF NOT EXISTS idx_edges_nids ON edges(parent_nid, child_nid);
-
-CREATE INDEX IF NOT EXISTS idx_graph_plans_node ON graph_plans(node_id);
-
--- View for node status history
-CREATE VIEW IF NOT EXISTS node_status_history AS
-SELECT
-    e.node_id,
-    e.run_id,
-    e.timestamp,
-    json_extract(e.payload, '$.old_status') as old_status,
-    json_extract(e.payload, '$.new_status') as new_status
-FROM events e
-WHERE e.event_type = 'node_status_changed'
-ORDER BY e.timestamp;
-
--- View for node execution timeline
-CREATE VIEW IF NOT EXISTS node_execution_timeline AS
-SELECT
-    n.node_id,
-    n.run_id,
-    n.node_nid,
-    n.task_type,
-    n.task_goal,
-    MIN(CASE WHEN e.event_type = 'node_created' THEN e.timestamp END) as created_time,
-    MIN(CASE WHEN e.event_type = 'step_started' AND json_extract(e.payload, '$.node_id') = n.node_id THEN e.timestamp END) as execution_start,
-    MAX(CASE WHEN e.event_type = 'node_result_available' THEN e.timestamp END) as completion_time
-FROM nodes n
-LEFT JOIN events e ON n.node_id = json_extract(e.payload, '$.node_id') -- Join on payload node_id where available
-GROUP BY n.node_id, n.run_id, n.node_nid, n.task_type, n.task_goal;
-```
+The schema is defined in `internal/db/schema.sql` and embedded into the binary using `//go:embed`.
 
 Additionally, `PRAGMA foreign_keys = ON` and `PRAGMA journal_mode=WAL` should be enabled on the connection.
 
@@ -323,69 +195,92 @@ Example payload structure:
 
 ### Custom Unmarshaller Implementation
 
-To handle this Redis message format, a custom unmarshaller needs to be implemented:
+To handle this Redis message format, a custom unmarshaller has been implemented in `internal/redis/unmarshaller.go`:
 
 ```go
-// CustomEventUnmarshaller handles the specific format of messages published 
+package redis
+
+import (
+	"encoding/json"
+	"fmt"
+
+	"github.com/ThreeDotsLabs/watermill"
+	"github.com/ThreeDotsLabs/watermill/message"
+	"github.com/redis/go-redis/v9"
+)
+
+// CustomEventUnmarshaller handles the specific format of messages published
 // by the Python EventBus, where the entire event is a JSON string under the "json_payload" key
 type CustomEventUnmarshaller struct{}
 
+// Unmarshal extracts the event JSON from the Redis stream message
 func (u CustomEventUnmarshaller) Unmarshal(values map[string]interface{}) (*message.Message, error) {
-    // Get the raw payload value
-    payload, ok := values["json_payload"]
-    if !ok {
-        // Fallback to the default Watermill field, just in case
-        payload, ok = values["_watermill_payload"]
-        if !ok {
-            return nil, fmt.Errorf("message does not contain payload under key 'json_payload' or '_watermill_payload'")
-        }
-    }
+	// Get the raw payload value
+	payload, ok := values["json_payload"]
+	if !ok {
+		// Fallback to the default Watermill field, just in case
+		payload, ok = values["_watermill_payload"]
+		if !ok {
+			return nil, fmt.Errorf("message does not contain payload under key 'json_payload' or '_watermill_payload'")
+		}
+	}
 
-    // Handle different payload types
-    var payloadStr string
-    switch v := payload.(type) {
-    case string:
-        payloadStr = v
-    default:
-        // Marshal any non-string payload to JSON
-        b, err := json.Marshal(v)
-        if err != nil {
-            return nil, fmt.Errorf("failed to marshal payload to JSON string: %w", err)
-        }
-        payloadStr = string(b)
-    }
+	// Handle different payload types
+	var payloadStr string
+	switch v := payload.(type) {
+	case string:
+		payloadStr = v
+	case []byte:
+		payloadStr = string(v)
+	default:
+		// Marshal any non-string payload to JSON
+		b, err := json.Marshal(v)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal payload to JSON string: %w", err)
+		}
+		payloadStr = string(b)
+	}
 
-    // Create a new Watermill message with the payload
-    msgUUID := watermill.NewUUID()
-    msg := message.NewMessage(msgUUID, []byte(payloadStr))
-    return msg, nil
+	// Create a new Watermill message with the payload
+	msgUUID := watermill.NewUUID()
+	msg := message.NewMessage(msgUUID, []byte(payloadStr))
+	return msg, nil
 }
 
+// Marshal implements the RedisStreamMarshaller interface, but is not used
+// when the component is a subscriber only
 func (u CustomEventUnmarshaller) Marshal(topic string, msg *message.Message) (*redis.XAddArgs, error) {
-    // Marshal implementation is not needed for subscriber-only code
-    // But could be implemented if we want to publish back to Redis with the same format
-    panic("CustomEventUnmarshaller.Marshal not implemented")
+	// This method is not needed for a subscriber-only implementation
+	// However, we provide a basic implementation in case it's used for publishing
+	return &redis.XAddArgs{
+		Stream: topic,
+		Values: map[string]interface{}{
+			"json_payload": string(msg.Payload),
+		},
+	}, nil
 }
 ```
 
-This custom unmarshaller is used when configuring the Redis Stream subscriber:
+This custom unmarshaller is used when configuring the Redis Stream subscriber in `internal/redis/router.go`:
 
 ```go
 subscriber, err := redisstream.NewSubscriber(
     redisstream.SubscriberConfig{
         Client:          redisClient,
         Unmarshaller:    CustomEventUnmarshaller{},
-        ConsumerGroup:   "go_server_group",
-        NackResendSleep: time.Second * 5,
-        MaxIdleTime:     time.Minute * 2,
+        ConsumerGroup:   config.ConsumerGroup,
+        Consumer:        config.ConsumerName, // Note: Field is Consumer
+        BlockTime:       config.BlockTime,
+        MaxIdleTime:     config.MaxIdleTime,
+        NackResendSleep: config.NackResendSleep,
     },
     watermillLogger,
 )
 ```
 
-### Event Processing Pipeline
+### Event Structs and Type Handling
 
-The complete event processing pipeline follows these steps:
+To parse the JSON payloads into Go objects, a set of structs has been defined in the `pkg/model/event.go` package:
 
 1. **Message Reception:** The Watermill Redis Stream subscriber consumes messages from the Redis stream and monitors them for acknowledgement (via XACK).
 
@@ -427,36 +322,36 @@ type Event struct {
     RunID     string          `json:"run_id"`
 }
 
-// EventPayload interface for type-specific payloads
+// EventType constants
+const (
+	EventTypeRunStarted          = "run_started"
+	EventTypeRunFinished         = "run_finished"
+    // ... other constants ...
+	EventTypeNodeResultAvailable = "node_result_available"
+)
+
+// EventPayload is an interface for event-specific payload types
 type EventPayload interface {
-    GetType() string
+	GetType() string
 }
 
 // Concrete payload types for each event type
+// e.g., RunStartedPayload, NodeCreatedPayload, etc.
+
+// ... payload struct definitions from pkg/model/event.go ...
+
 type RunStartedPayload struct {
-    InputData  json.RawMessage `json:"input_data"`
-    Config     json.RawMessage `json:"config"`
-    RunMode    string          `json:"run_mode"`
-    TimestampUTC string        `json:"timestamp_utc"`
+	InputData    json.RawMessage `json:"input_data"`
+	Config       json.RawMessage `json:"config"`
+	RunMode      string          `json:"run_mode"`
+	TimestampUTC string          `json:"timestamp_utc"`
 }
 
-type NodeCreatedPayload struct {
-    NodeID      string   `json:"node_id"`
-    NodeNID     string   `json:"node_nid"`
-    NodeType    string   `json:"node_type"`
-    TaskType    string   `json:"task_type"`
-    TaskGoal    string   `json:"task_goal"`
-    Layer       int      `json:"layer"`
-    OuterNodeID *string  `json:"outer_node_id"`
-    RootNodeID  string   `json:"root_node_id"`
-    InitialParentNIDs []string `json:"initial_parent_nids"`
-    Step        *int    `json:"step,omitempty"`
-}
+// ... other payload structs ...
 
-// Additional payload structs for other event types...
 ```
 
-The `StateManager` implementations will use these structs to process events and update the in-memory state.
+The `StateManager` and `DatabaseManager` implementations use these structs to process events and update the in-memory state and database respectively.
 
 ## 12. Logging
 
@@ -464,17 +359,18 @@ The `StateManager` implementations will use these structs to process events and 
 - Initialize the logger in the main application based on the `log_level` config.
 - Pass logger instances down to components or use a package-level logger.
 - Include contextual fields in logs (e.g., `component`, `run_id`, `event_id`, `client_addr`).
-- Configure Watermill to use structured logging adapter for zerolog.
+- Configure Watermill to use the implemented structured logging adapter (`WatermillLogger` in `internal/redis/router.go`) for zerolog.
 
 ## 13. Dependencies
 
-Based on the existing `go.mod` file and the proposed architecture:
+Based on the implemented code and proposed architecture:
 
 - **`database/sql`:** Standard library for DB interaction.
+- **`embed`:** Standard library for embedding schema file.
 - **`github.com/ThreeDotsLabs/watermill`:** Message routing framework.
 - **`github.com/ThreeDotsLabs/watermill-redisstream`:** Redis Stream adapter for Watermill.
 - **`github.com/redis/go-redis/v9`:** Underlying Redis client used by the Watermill adapter.
-- **`github.com/mattn/go-sqlite3`:** CGO driver for SQLite (Needs to be added to `go.mod`).
+- **`github.com/mattn/go-sqlite3`:** CGO driver for SQLite.
 - **`github.com/gorilla/websocket`:** WebSocket protocol implementation.
 - **`github.com/google/uuid`:** For generating UUIDs if needed.
 - **`github.com/rs/zerolog`:** Structured logging.
@@ -502,6 +398,8 @@ writehere-go/
   cmd/
     server/
       main.go             ← wiring, config, shutdown
+    listener/ # Added example listener
+      main.go
   internal/
     api/
       handlers.go         ← HTTP/REST endpoints
