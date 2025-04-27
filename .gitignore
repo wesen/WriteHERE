@@ -31,3 +31,5 @@ ENV/
 
 .history/
 .specstory/
+
+*.db
