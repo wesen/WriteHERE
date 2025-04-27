@@ -1,0 +1,49 @@
+#!/bin/bash
+
+# Store file lists in variables
+CORE_FILES=$(find recursive/utils -type f -name "ws_server.py" -o -name "db_manager.py" -o -name "event_state_manager.py" -o -name "graph_state_manager.py" -o -name "config.py" | sort)
+
+DOC_FILES=$(find ttmp -type f -name "04-long-term-document--event-logging-system.md" 2>/dev/null; find ttmp/2025-04-26 -type f -name "*.md" 2>/dev/null)
+
+ADDITIONAL_FILES=$(find recursive/utils -type f -name "event_bus.py" 2>/dev/null; find . -type f -name "server-main.py" 2>/dev/null)
+
+# Print header
+echo "=== WebSocket Server Related Files ==="
+echo
+
+# Core implementation files
+echo "Core Implementation Files:"
+echo "------------------------"
+echo "$CORE_FILES"
+echo
+
+# Documentation files
+echo "Documentation Files:"
+echo "------------------"
+echo "$DOC_FILES"
+echo
+
+# Additional related files
+echo "Additional Related Files:"
+echo "----------------------"
+echo "$ADDITIONAL_FILES"
+echo
+
+echo "=== Printing File Contents ==="
+echo "----------------------------"
+echo
+
+# Print all files using pinocchio catter
+# Combine all files into one variable
+ALL_FILES="$CORE_FILES $DOC_FILES $ADDITIONAL_FILES "
+
+# Check if we have any files before running pinocchio catter
+if [ -n "$ALL_FILES" ]; then
+    echo "Printing all files:"
+    echo "$ALL_FILES"
+    echo "--------------------------------"
+    pinocchio catter print $ALL_FILES
+else
+    echo "No files found!"
+fi
+
