@@ -32,4 +32,5 @@ ENV/
 .history/
 .specstory/
 
-*.db
+*.db*
+bin/
