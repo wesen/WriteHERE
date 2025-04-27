@@ -51,9 +51,9 @@ graph TD
     - Broadcasting events received from the Watermill handler to connected clients.
     - Handling client-specific logic (like sending historical data upon connection).
 - **Watermill Message Router (`internal/redis/router.go`):** Manages the event flow:
-    - Configures the Redis Stream PubSub subscriber.
+    - Configures the Redis Stream PubSub subscriber, utilizing a custom unmarshaller to handle the specific JSON payload format sent by the Python publisher.
     - Registers independent handlers for different components (DB persist, state update, WS broadcast).
-    - Provides exactly-once message delivery with acknowledgement/retry capabilities.
+    - Provides message delivery guarantees (e.g., at-least-once) with acknowledgement/retry capabilities.
     - Handles graceful shutdown of message processing.
 - **Database Manager (`internal/db/manager.go`):** Handles all interactions with the SQLite database. Responsible for:
     - Establishing and managing the DB connection.
@@ -72,16 +72,17 @@ graph TD
 ## 4. Data Flow (Event Processing with Watermill)
 
 1.  **Agent:** An event occurs in the external agent process.
-2.  **Event Bus (Python):** The Python `EventBus` publishes the event (as JSON) to the configured Redis stream (`agent_events`).
+2.  **Event Bus (Python):** The Python `EventBus` publishes the **entire event object serialized as a JSON string** under the key **`json_payload`** within the Redis stream message.
 3.  **Watermill Router (Go):** 
     - The Redis Stream PubSub subscribes to the stream and receives new messages.
+    - **A custom Watermill unmarshaller** reads the `json_payload` field from the Redis message, extracts the JSON string, and constructs a Watermill message with this string as its payload.
     - The message router delivers the message to all registered handlers in parallel.
 4.  **Handler Execution:**
-    - **Database Handler:** Decodes the message, persists event to SQLite, and acknowledges the message.
-    - **State Update Handler:** Decodes the message, updates in-memory state managers, and acknowledges the message.
-    - **WebSocket Broadcast Handler:** Gets the raw payload, sends it to the WebSocket hub for broadcasting, and acknowledges the message.
-5.  **WebSocket Hub:** Takes the raw JSON from the broadcast handler and sends it to all connected clients.
-6.  **UI:** The React UI receives the JSON string, parses it, and updates its Redux store.
+    - **Database Handler:** Decodes the JSON payload (which represents the full event), persists the event to SQLite, and acknowledges the message.
+    - **State Update Handler:** Decodes the JSON payload, updates in-memory state managers based on the event type/data, and acknowledges the message.
+    - **WebSocket Broadcast Handler:** Gets the raw JSON payload, sends it to the WebSocket hub for broadcasting, and acknowledges the message.
+5.  **WebSocket Hub:** Takes the raw JSON string from the broadcast handler and sends it to all connected clients.
+6.  **UI:** The React UI receives the event JSON string, parses it, and updates its Redux store.
 
 The key advantage is that each handler operates independently on the same original message, with its own acknowledgement control, eliminating the need for custom fan-out channels.
 
@@ -157,7 +158,175 @@ The Go server will implement the exact same API endpoints as the Python server:
     - **HTTP Server:** Standard HTTP error responses (e.g., 404, 500) with logged details.
 - **Error Wrapping:** Use `fmt.Errorf` with `%w` or `github.com/pkg/errors` for wrapping errors to preserve context.
 
-## 11. Logging
+## 11. Event Message Format and Processing
+
+### Redis Stream Message Format
+
+The Redis Stream messages published by the Python `EventBus` have a specific format that requires special handling in the Go service. Based on examination of actual messages, the Python publisher uses the following pattern:
+
+```
+XADD agent_events * json_payload "{ complete JSON serialized event object }"
+```
+
+The key aspects of this format are:
+
+- **Single Field:** Unlike Watermill's default publisher which uses multiple fields for message metadata (`_watermill_message_uuid`, `_watermill_payload`), the Python implementation uses a single field `json_payload`.
+- **Complete Event Object:** The value of `json_payload` is a JSON string representing the entire event object, including `event_id`, `timestamp`, `event_type`, `payload`, and `run_id`.
+- **No Watermill Metadata:** The messages do not contain any Watermill-specific metadata that the default unmarshaller expects.
+
+Example payload structure:
+```json
+{
+  "event_id": "9ec55edc-1f96-4541-8eb7-9382e00a4d7c",
+  "timestamp": "2025-04-26T02:56:10.937611Z",
+  "event_type": "tool_invoked",
+  "payload": {
+    "tool_call_id": "8f6a60d4-77a7-48c6-8b60-b71648849794",
+    "tool_name": "BingBrowser",
+    // other tool-specific fields...
+  },
+  "run_id": "b3a7ae44-23c4-4082-8ad5-ce1f898a8d27"
+}
+```
+
+### Custom Unmarshaller Implementation
+
+To handle this Redis message format, a custom unmarshaller needs to be implemented:
+
+```go
+// CustomEventUnmarshaller handles the specific format of messages published 
+// by the Python EventBus, where the entire event is a JSON string under the "json_payload" key
+type CustomEventUnmarshaller struct{}
+
+func (u CustomEventUnmarshaller) Unmarshal(values map[string]interface{}) (*message.Message, error) {
+    // Get the raw payload value
+    payload, ok := values["json_payload"]
+    if !ok {
+        // Fallback to the default Watermill field, just in case
+        payload, ok = values["_watermill_payload"]
+        if !ok {
+            return nil, fmt.Errorf("message does not contain payload under key 'json_payload' or '_watermill_payload'")
+        }
+    }
+
+    // Handle different payload types
+    var payloadStr string
+    switch v := payload.(type) {
+    case string:
+        payloadStr = v
+    default:
+        // Marshal any non-string payload to JSON
+        b, err := json.Marshal(v)
+        if err != nil {
+            return nil, fmt.Errorf("failed to marshal payload to JSON string: %w", err)
+        }
+        payloadStr = string(b)
+    }
+
+    // Create a new Watermill message with the payload
+    msgUUID := watermill.NewUUID()
+    msg := message.NewMessage(msgUUID, []byte(payloadStr))
+    return msg, nil
+}
+
+func (u CustomEventUnmarshaller) Marshal(topic string, msg *message.Message) (*redis.XAddArgs, error) {
+    // Marshal implementation is not needed for subscriber-only code
+    // But could be implemented if we want to publish back to Redis with the same format
+    panic("CustomEventUnmarshaller.Marshal not implemented")
+}
+```
+
+This custom unmarshaller is used when configuring the Redis Stream subscriber:
+
+```go
+subscriber, err := redisstream.NewSubscriber(
+    redisstream.SubscriberConfig{
+        Client:          redisClient,
+        Unmarshaller:    CustomEventUnmarshaller{},
+        ConsumerGroup:   "go_server_group",
+        NackResendSleep: time.Second * 5,
+        MaxIdleTime:     time.Minute * 2,
+    },
+    watermillLogger,
+)
+```
+
+### Event Processing Pipeline
+
+The complete event processing pipeline follows these steps:
+
+1. **Message Reception:** The Watermill Redis Stream subscriber consumes messages from the Redis stream and monitors them for acknowledgement (via XACK).
+
+2. **Message Unmarshalling:** The custom unmarshaller converts the Redis stream item into a Watermill message:
+   - Extracts the JSON string from the `json_payload` field
+   - Creates a new Watermill message with a generated UUID
+   - Sets the full event JSON as the message payload
+
+3. **Router Handling:** The Watermill router delivers the message to all registered handlers:
+   - **Database Handler:**
+     - Parses the JSON payload back into a Go struct representing the event
+     - Determines the event type (`event_type` field) and executes specific logic based on it
+     - Updates the appropriate database tables using transactions where necessary
+   
+   - **State Manager Handler:**
+     - Parses the JSON payload into an event object
+     - Updates the corresponding state manager (`EventManager` or `GraphManager`) based on event type
+     - For graph-relevant events (e.g., `node_created`, `edge_added`), updates the graph structure
+     - For event log events, appends to the in-memory event list
+
+   - **WebSocket Broadcast Handler:**
+     - Takes the raw message payload (which is already the full JSON event string)
+     - Passes it directly to the WebSocket hub
+     - The hub forwards it to all connected clients without modification
+
+4. **Message Acknowledgement:** Each handler acknowledges the message upon successful processing using `msg.Ack()` or returns an error which causes Watermill to NACK the message.
+
+### Event Structs and Type Handling
+
+To parse the JSON payloads into Go objects, a set of structs will be defined in the `pkg/model` package:
+
+```go
+// Base Event struct matching the Python implementation
+type Event struct {
+    EventID   string          `json:"event_id"`
+    Timestamp string          `json:"timestamp"`
+    EventType string          `json:"event_type"`
+    Payload   json.RawMessage `json:"payload"` // Use RawMessage for flexible payload types
+    RunID     string          `json:"run_id"`
+}
+
+// EventPayload interface for type-specific payloads
+type EventPayload interface {
+    GetType() string
+}
+
+// Concrete payload types for each event type
+type RunStartedPayload struct {
+    InputData  json.RawMessage `json:"input_data"`
+    Config     json.RawMessage `json:"config"`
+    RunMode    string          `json:"run_mode"`
+    TimestampUTC string        `json:"timestamp_utc"`
+}
+
+type NodeCreatedPayload struct {
+    NodeID      string   `json:"node_id"`
+    NodeNID     string   `json:"node_nid"`
+    NodeType    string   `json:"node_type"`
+    TaskType    string   `json:"task_type"`
+    TaskGoal    string   `json:"task_goal"`
+    Layer       int      `json:"layer"`
+    OuterNodeID *string  `json:"outer_node_id"`
+    RootNodeID  string   `json:"root_node_id"`
+    InitialParentNIDs []string `json:"initial_parent_nids"`
+    Step        *int    `json:"step,omitempty"`
+}
+
+// Additional payload structs for other event types...
+```
+
+The `StateManager` implementations will use these structs to process events and update the in-memory state.
+
+## 12. Logging
 
 - Use `github.com/rs/zerolog` for structured JSON logging.
 - Initialize the logger in the main application based on the `log_level` config.
@@ -165,7 +334,7 @@ The Go server will implement the exact same API endpoints as the Python server:
 - Include contextual fields in logs (e.g., `component`, `run_id`, `event_id`, `client_addr`).
 - Configure Watermill to use structured logging adapter for zerolog.
 
-## 12. Dependencies
+## 13. Dependencies
 
 - **`net/http`:** Standard library for HTTP server.
 - **`database/sql`:** Standard library for DB interaction.
@@ -179,7 +348,7 @@ The Go server will implement the exact same API endpoints as the Python server:
 - **`github.com/spf13/viper`:** [Recommended] Configuration management.
 - **`github.com/pkg/errors`:** Error wrapping.
 
-## 13. Lifecycle Management
+## 14. Lifecycle Management
 
 - The main application entry point (`cmd/server/main.go`) will create a root `context`.
 - Signal handling (SIGINT, SIGTERM) will be used to cancel this root context.
@@ -187,7 +356,7 @@ The Go server will implement the exact same API endpoints as the Python server:
 - Components (Router, Hub, HTTP server shutdown) will listen for context cancellation (`<-ctx.Done()`) to initiate graceful shutdown procedures.
 - Watermill will handle draining in-flight messages and proper acknowledgement during shutdown.
 
-## 14. Package Layout
+## 15. Package Layout
 
 ```
 cmd/
