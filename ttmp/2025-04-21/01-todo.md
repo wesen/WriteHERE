@@ -1,3 +1,12 @@
+## Porting to GO
+
+After porting to http:
+- [ ] Steps are still spinning on load even when they are done (in ui-react)
+- [ ] Some error when loading the graph
+
+- [ ] Compare to python version
+- [ ] Add MCP tools to query the servers APIs and to load the sqlite
+
 ## UI stuff
 
 - [x] Show more of the metadata fields now that context has been extended

@@ -41,33 +41,40 @@ graph TD
 
 **Key Components:**
 
-- **Main Application (`cmd/server/main.go`):** Parses configuration (using Cobra/Viper), initializes components, sets up `context` and `errgroup` for lifecycle management, starts the Watermill router and HTTP server.
-- **HTTP Server (`internal/server/http.go`):** Uses the standard `net/http` library. Handles:
-    - Serving static React UI files.
-    - Routing HTTP API requests (`/api/*`) to handlers.
-    - Upgrading `/ws/events` connections to WebSocket using `gorilla/websocket`.
-- **WebSocket Hub (`internal/ws/hub.go`):** Manages active WebSocket client connections. Responsible for:
-    - Registering/unregistering clients.
-    - Broadcasting events received from the Watermill handler to connected clients.
-    - Handling client-specific logic (like sending historical data upon connection).
-- **Watermill Message Router (`internal/redis/router.go`):** Manages the event flow:
-    - Configures the Redis Stream PubSub subscriber, utilizing a custom unmarshaller (`internal/redis/unmarshaller.go`) to handle the specific JSON payload format sent by the Python publisher.
-    - Registers independent handlers for different components (DB persist, state update, WS broadcast).
-    - Provides message delivery guarantees (e.g., at-least-once) with acknowledgement/retry capabilities.
-    - Handles graceful shutdown of message processing.
-- **Database Manager (`internal/db/manager.go`):** Handles all interactions with the SQLite database. Responsible for:
-    - Establishing and managing the DB connection.
-    - Ensuring the schema exists on startup.
-    - Storing incoming events through a Watermill handler that processes and acknowledges messages.
-    - Providing methods to query historical data (e.g., latest run events, latest graph state).
-    - Uses Go's `database/sql` package with a suitable SQLite driver (e.g., `mattn/go-sqlite3`).
-- **State Managers (`internal/state/event_manager.go`, `internal/state/graph_manager.go`):** Maintain in-memory state mirroring the Python implementation. Responsible for:
+- **Main Application (`cmd/server/main.go`):** ✅ Parses configuration (using Cobra), initializes components (DB, State Managers, HTTP Server, Redis Router), sets up `context` and `errgroup` for lifecycle management, starts and waits for the HTTP server and Watermill router goroutines.
+- **HTTP Server (`internal/server/http.go`):** ✅ Uses the standard `net/http` library, `gorilla/mux` for routing, and `gorilla/websocket` for upgrades. Manages its own lifecycle via `errgroup` passed from `main`. Handles:
+    - Serving static React UI files (with SPA fallback).
+    - Routing HTTP API requests (`/api/*`) to handlers that interact with state managers.
+    - Upgrading `/ws/events` connections to WebSocket.
+    - Manages the `WSHub` lifecycle.
+- **WebSocket Hub (`internal/server/ws.go`):** ✅ Manages active WebSocket client connections (`Client` struct) and runs within the HTTP server's `errgroup`. Responsible for:
+    - Registering/unregistering clients via channels.
+    - Broadcasting event JSON payloads received via `HTTPServer.BroadcastEvent` to connected clients.
+    - Handling client-specific logic (like sending historical data upon connection if `reload_session=true`).
+    - Managing client read/write pumps.
+    - Graceful shutdown via context cancellation.
+- **Watermill Message Router (`internal/redis/router.go`):** ✅ Manages the event flow using Watermill. Runs within the main application's `errgroup`.
+    - Configures the Redis Stream PubSub subscriber using `CustomEventUnmarshaller`.
+    - Registers a single handler (`messageHandler` in `main.go`) responsible for:
+        - Persisting the event via `DatabaseManager`.
+        - Updating `EventManager` and `GraphManager`.
+        - Broadcasting the raw event JSON via `HTTPServer`.
+    - Provides message delivery guarantees (at-least-once) with acknowledgement/retry capabilities.
+    - Handles graceful shutdown via context cancellation.
+- **Database Manager (`internal/db/manager.go`):** ✅ Handles all interactions with the SQLite database. Responsible for:
+    - Establishing and managing the DB connection (including WAL mode).
+    - Ensuring the schema exists on startup (`schema.sql` embedded).
+    - Storing incoming events (`HandleMessage` method called by the main handler) and updating related tables (`runs`, `nodes`, `edges`, `graph_plans`) within a transaction.
+    - Providing methods to query historical data (`GetLatestRunGraph`, `GetLatestRunEvents`).
+    - Uses Go's `database/sql` package with `mattn/go-sqlite3`.
+- **State Managers (`internal/state/event_manager.go`, `internal/state/graph_manager.go`):** ✅ Maintain in-memory state mirroring the Python implementation. Responsible for:
     - Storing recent events (`EventManager`) and the current graph structure (`GraphManager`).
-    - Providing thread-safe methods (using `sync.Mutex` or `sync.RWMutex`) to add/update/query state.
-    - Loading initial state from the Database Manager if `reload_session` is enabled.
-- **API Handlers (`internal/api/handlers.go`):** Implement the logic for the HTTP API endpoints, interacting with the State Managers.
-- **Configuration (`pkg/config/config.go`):** Defines the `ServerConfig` struct and handles loading configuration from environment variables and potentially CLI flags (via Cobra/Viper).
-- **Logging (`pkg/log/log.go`):** Centralized setup for structured logging using `zerolog`.
+    - Providing thread-safe methods (using `sync.RWMutex`) to add/update/query state.
+    - Loading initial state from the Database Manager via `LoadStateFromDB` methods if `reload_session` is enabled in `main.go`.
+    - Processing events via `ProcessEvent` in `GraphManager`.
+- **API Handlers (within `internal/server/http.go`):** ✅ Implement the logic for the HTTP API endpoints (`/api/*`), interacting with the `EventManager` and `GraphManager`.
+- **Configuration (within `cmd/server/main.go`):** ✅ Uses Cobra flags to define and parse configuration for all components (Redis, DB, HTTP, State, Logging). Default values provided.
+- **Logging (within `cmd/server/main.go` and components):** ✅ Centralized setup for structured logging using `zerolog`. Logger instances are passed to components. Watermill uses a `zerolog` adapter.
 
 ## 4. Data Flow (Event Processing with Watermill)
 
@@ -88,7 +95,7 @@ The key advantage is that each handler operates independently on the same origin
 
 ## 5. API Design
 
-The Go server will implement the exact same API endpoints as the Python server:
+The Go server implements the exact same API endpoints as the Python server:
 
 - **WebSocket:**
     - `GET /ws/events`: Handles WebSocket connection upgrades. Sends historical data if `reload_session=true`, then streams live events.
@@ -118,11 +125,9 @@ Additionally, `PRAGMA foreign_keys = ON` and `PRAGMA journal_mode=WAL` should be
 
 ## 7. Configuration Handling
 
-- A `config.Config` struct will hold all configuration parameters.
-- Configuration will be loaded primarily from environment variables (matching Python's `ServerConfig.from_env`).
-- Additional Watermill-specific configuration will be added for Redis Stream consumer group, consumer name, etc.
-- ✅ We've implemented Cobra for defining CLI flags that can override environment variables.
-- [Optional but Recommended] Use Viper to manage configuration loading from environment variables and flags.
+- ✅ Configuration is handled via Cobra flags in `cmd/server/main.go`, providing overrides for environment variables or defaults.
+- ✅ All specified options (Redis, DB, HTTP, State, Logging) are configurable via flags.
+- 🚫 Viper is not currently used, Cobra flags suffice.
 
 ## 8. State Management
 
@@ -134,19 +139,16 @@ Additionally, `PRAGMA foreign_keys = ON` and `PRAGMA journal_mode=WAL` should be
 
 ## 9. Concurrency Model
 
-- **`errgroup`:** The main application will use `golang.org/x/sync/errgroup` to manage the lifecycle of the primary goroutines (HTTP Server, Watermill Router, WebSocket Hub).
-- **Goroutines:**
+- **`errgroup`:** ✅ The main application (`cmd/server/main.go`) uses `golang.org/x/sync/errgroup` to manage the lifecycle of the primary goroutines (HTTP Server including WebSocket Hub, Watermill Router).
+- **Goroutines:** ✅ Managed by `errgroup` in `main.go` and `internal/server/http.go`.
     - HTTP Server listener (`srv.ListenAndServe`)
-    - HTTP Server graceful shutdown handler
-    - Watermill Router (`router.Run`) - manages its own goroutines for handlers
-    - WebSocket Hub (`hub.Run`)
-    - WebSocket client read/write pumps (one pair per client)
-- **Watermill Router:** Eliminates the need for many custom channels by:
-    - Managing its own handler goroutines
-    - Providing built-in acknowledgement, retry, and backpressure mechanisms
-    - Allowing different components to independently process the same message
-- **`sync.Mutex` / `sync.RWMutex`:** Used within state managers and WebSocket Hub to protect shared data structures.
-- **`context.Context`:** Passed down from the main application to manage cancellation and timeouts, ensuring graceful shutdown of all components including the Watermill router.
+    - HTTP Server graceful shutdown handler (triggered by context cancellation)
+    - Watermill Router (`router.Run`)
+    - WebSocket Hub (`hub.Run`) (managed within HTTP server's `errgroup`)
+    - WebSocket client read/write pumps (one pair per client, managed by the hub/client itself)
+- **Watermill Router:** ✅ A single message handler in `main.go` coordinates DB persistence, state updates, and WebSocket broadcasting for each incoming message. Watermill handles message delivery, acknowledgement, and retries internally.
+- **`sync.Mutex` / `sync.RWMutex`:** ✅ Used within `EventManager`, `GraphManager`, and `WSHub` to protect shared data structures.
+- **`context.Context`:** ✅ Passed down from the main application (`main.go`) to manage cancellation and timeouts. Signal handling cancels the root context, which propagates through the `errgroup` to the HTTP server, WebSocket Hub, and Watermill router, ensuring graceful shutdown.
 
 ## 10. Error Handling
 
@@ -389,54 +391,61 @@ Based on the implemented code and proposed architecture:
 
 ## 15. Package Layout
 
-The Go module name is `writehere-go`. The proposed package structure follows standard Go conventions:
+The go module is within `writehere-go/`.
+
+✅ Implemented mostly as proposed. `internal/api` handlers are currently within `internal/server/http.go`. `internal/ws` hub is within `internal/server/ws.go`. `pkg/config` and `pkg/log` were integrated into `cmd/server/main.go`.
 
 ```
 writehere-go/
   go.mod
   go.sum
   cmd/
-    server/                ← ✅ Implemented with CLI flags
-      main.go
-    listener/ # Added example listener
+    server/                ← ✅ Implemented main application logic
       main.go
   internal/
-    api/                   ← 🔜 Next step: HTTP/REST endpoints
-      handlers.go
-    ws/                    ← 🔜 Second priority: WebSocket hub implementation
-      hub.go
+    server/                ← ✅ Implemented HTTP server, API handlers, WebSocket hub
+      http.go
+      ws.go
     redis/                 ← ✅ Implemented event router with Watermill
       router.go
       unmarshaller.go
     db/                    ← ✅ Implemented DB manager for SQLite storage
       manager.go
       schema.sql
-    state/                 ← 🔜 Third priority: In-memory state managers
+    state/                 ← ✅ Implemented In-memory state managers
       event_manager.go
       graph_manager.go
   pkg/
-    model/                 ← ✅ Implemented event structs
+    model/                 ← ✅ Implemented event structs and helpers
       event.go
-    config/                ← 🚫 May not be needed with Cobra flags
-      config.go
-    log/                   ← Implemented inline in server/main.go
-      log.go
+      event_helpers.go
+  # ... other project files ...
 ```
 
 ## 16. Implementation Progress
 
 ### Completed Components
 
-- ✅ `cmd/server/main.go`: Basic server implementation with Cobra command-line flags for all configuration options
-- ✅ `internal/db/manager.go`: Database manager with SQLite database handling
-- ✅ `internal/redis/router.go`: Redis message router with Watermill
-- ✅ `internal/redis/unmarshaller.go`: Custom unmarshaller for handling Python-published event format
-- ✅ `pkg/model/event.go`: Event type definitions and payload structs
+- ✅ `cmd/server/main.go`: Application entry point, configuration (Cobra), lifecycle management (`errgroup`, context), component initialization (DB, State, HTTP, Redis), message handler logic.
+- ✅ `internal/db/manager.go`: Database manager with SQLite handling, schema embedding, event storage logic, and data retrieval methods.
+- ✅ `internal/redis/router.go`: Redis message router setup using Watermill.
+- ✅ `internal/redis/unmarshaller.go`: Custom unmarshaller for Python event format.
+- ✅ `internal/server/http.go`: HTTP server implementation (`net/http`, `gorilla/mux`), REST API endpoint handlers, static file serving.
+- ✅ `internal/server/ws.go`: WebSocket hub (`gorilla/websocket`) for managing client connections and broadcasting.
+- ✅ `internal/state/event_manager.go`: In-memory event state management.
+- ✅ `internal/state/graph_manager.go`: In-memory graph state management.
+- ✅ `pkg/model/event.go`: Event type definitions and payload structs.
+- ✅ `pkg/model/event_helpers.go`: Helper functions for parsing event payloads.
+- ✅ Lifecycle Management: Integrated graceful shutdown using `context` and `errgroup`.
+- ✅ Configuration: All core components configurable via CLI flags.
 
 ### Next Steps
 
-1. 🔜 Implement the HTTP server with REST API endpoints
-2. 🔜 Implement the WebSocket hub for client connection management
-3. 🔜 Implement state managers for in-memory event and graph state
-4. 🔜 Add static file serving
-6. 🔜 Add reload_session capability 
+1.  ✅ Implement the HTTP server with REST API endpoints
+2.  ✅ Implement the WebSocket hub for client connection management
+3.  ✅ Implement state managers for in-memory event and graph state
+4.  ✅ Add static file serving
+5.  ✅ Add reload_session capability
+6.  ➡️ Testing: Implement unit and integration tests for components.
+7.  ➡️ Refinement: Address any TODOs, improve error handling, optimize performance if needed.
+8.  ➡️ Documentation: Add detailed comments and potentially update external docs.
