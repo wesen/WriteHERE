@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Modal, Tab, Nav, Button, Badge } from 'react-bootstrap';
 import { AgentEvent, LlmMessage } from '../features/events/eventsApi';
 import { isEventType } from '../helpers/eventType';
-import { ArrowRight, ArrowLeft } from 'lucide-react';
+import { ArrowRight, ArrowLeft, ChevronLeft, ChevronRight } from 'lucide-react';
 import CodeHighlighter from './SyntaxHighlighter';
 import { statusColorMap, eventTypeBadgeVariant } from '../helpers/eventConstants.ts';
 import { formatTimestamp, RenderClickableNodeId } from '../helpers/formatters.tsx';
@@ -14,6 +14,10 @@ interface EventDetailModalProps {
   onNodeClick?: (nodeId: string) => void;
   hasPrevious?: boolean;
   onBack?: () => void;
+  onNext?: () => void;
+  onPrevious?: () => void;
+  hasPreviousEvent?: boolean;
+  hasNextEvent?: boolean;
 }
 
 const EventDetailModal: React.FC<EventDetailModalProps> = ({ 
@@ -22,9 +26,42 @@ const EventDetailModal: React.FC<EventDetailModalProps> = ({
   event, 
   onNodeClick,
   hasPrevious = false,
-  onBack
+  onBack,
+  onNext,
+  onPrevious,
+  hasPreviousEvent = false,
+  hasNextEvent = false
 }) => {
   const [activeTab, setActiveTab] = useState('summary');
+  
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!show) return;
+      
+      switch (e.key) {
+        case 'ArrowLeft':
+          if (onPrevious && hasPreviousEvent) {
+            e.preventDefault();
+            onPrevious();
+          }
+          break;
+        case 'ArrowRight':
+          if (onNext && hasNextEvent) {
+            e.preventDefault();
+            onNext();
+          }
+          break;
+        case 'Escape':
+          onHide();
+          break;
+      }
+    };
+    
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [show, onPrevious, onNext, onHide, hasPreviousEvent, hasNextEvent]);
   
   if (!event) return null;
 
@@ -76,6 +113,19 @@ const EventDetailModal: React.FC<EventDetailModalProps> = ({
   const handleBackClick = () => {
     if (onBack) {
       onBack();
+    }
+  };
+
+  // Event navigation handlers
+  const handlePreviousClick = () => {
+    if (onPrevious && hasPreviousEvent) {
+      onPrevious();
+    }
+  };
+
+  const handleNextClick = () => {
+    if (onNext && hasNextEvent) {
+      onNext();
     }
   };
 
@@ -769,6 +819,27 @@ const EventDetailModal: React.FC<EventDetailModalProps> = ({
             </Badge>
             <small className="text-muted">{formatTimestamp(event.timestamp)}</small>
           </Modal.Title>
+          <div className="d-flex">
+            <Button 
+              variant="outline-secondary" 
+              size="sm" 
+              className="me-2" 
+              onClick={handlePreviousClick}
+              disabled={!hasPreviousEvent}
+              title="Previous event (Left Arrow)"
+            >
+              <ChevronLeft size={16} />
+            </Button>
+            <Button 
+              variant="outline-secondary" 
+              size="sm" 
+              onClick={handleNextClick}
+              disabled={!hasNextEvent}
+              title="Next event (Right Arrow)"
+            >
+              <ChevronRight size={16} />
+            </Button>
+          </div>
         </div>
       </Modal.Header>
       <Modal.Body className="p-0">

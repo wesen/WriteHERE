@@ -31,7 +31,7 @@
 - [ ] Make the graph canvas resize so it contains the full thing
 - [ ] Make it pannable with the mou
 
-- [ ] Little dashboard with currently executing steps and tool calls with little spinners or so
+- [x] Little dashboard with currently executing steps and tool calls with little spinners or so
 
 ## Research
 
@@ -66,8 +66,8 @@
 - [ ] add events when templates are rendered or parsed
 - [x] add run started event
 - [ ] Add llm call id to link completed to started + tool calls to parent
-- [ ] pass execution context to tool_calls
-- [ ] What is Layer number?
+- [x] pass execution context to tool_calls
+- [x] What is Layer number?
 
 ## BIG feature
 
